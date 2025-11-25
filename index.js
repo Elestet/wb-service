@@ -32,100 +32,50 @@ app.get('/wb-price', async (req, res) => {
   try {
     console.log('Request for nm:', nm);
     
-    // Имитация "человеческого" поведения - ждем перед запросом
-    await randomDelay(1, 3);
+    // Используем публичный поиск WB - менее строгий
+    const searchUrl = `https://search.wb.ru/exactmatch/ru/common/v5/search?ab_testing=false&appType=1&curr=rub&dest=-1257786&query=${nm}&resultset=catalog&sort=popular&spp=30&suppressSpellcheck=false`;
     
-    // Вычисляем basket URL по формуле WB
-    const vol = Math.floor(nm / 100000);
-    const part = Math.floor(nm / 1000);
+    console.log('Trying search API');
     
-    // Пробуем card API с хорошими заголовками
-    const cardUrl = `https://card.wb.ru/cards/v1/detail?appType=1&curr=rub&dest=-1257786&spp=30&nm=${nm}`;
-    
-    console.log('Trying card API:', cardUrl);
-    
-    try {
-      const cardResp = await axios.get(cardUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': '*/*',
-          'Accept-Language': 'ru-RU,ru;q=0.9',
-          'Accept-Encoding': 'gzip, deflate, br',
-          'Connection': 'keep-alive',
-          'Referer': 'https://www.wildberries.ru/'
-        },
-        timeout: 8000
-      });
-      
-      const product = cardResp.data?.data?.products?.[0];
-      if (product) {
-        const priceRaw = product.salePriceU || product.priceU;
-        if (priceRaw) {
-          console.log('Success! Price found:', priceRaw / 100);
-          return res.json({
-            nm: product.id,
-            price: priceRaw / 100,
-            name: product.name,
-            brand: product.brand,
-            rating: product.rating
-          });
-        }
-      }
-    } catch (cardErr) {
-      console.log('Card API failed, trying basket...', cardErr.message);
+    const searchResp = await axios.get(searchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': '*/*',
+        'Accept-Language': 'ru',
+        'Origin': 'https://www.wildberries.ru',
+        'Referer': 'https://www.wildberries.ru/'
+      },
+      timeout: 10000
+    });
+
+    const products = searchResp.data?.data?.products;
+    if (!products || products.length === 0) {
+      return res.status(404).json({ error: 'товар не найден' });
+    }
+
+    // Ищем точное совпадение по артикулу
+    let product = products.find(p => String(p.id) === String(nm));
+    if (!product) {
+      product = products[0];
     }
     
-    // Если card API не сработал, ждем еще и пробуем basket
-    await randomDelay(2, 4);
-    
-    // Пробуем разные basket хосты
-    const hosts = [
-      'basket-01.wbbasket.ru',
-      'basket-02.wbbasket.ru',
-      'basket-03.wbbasket.ru',
-      'basket-04.wbbasket.ru',
-      'basket-05.wbbasket.ru'
-    ];
-    
-    // Перемешиваем хосты для случайности
-    const shuffledHosts = hosts.sort(() => Math.random() - 0.5);
-    
-    for (const host of shuffledHosts.slice(0, 2)) {
-      try {
-        const priceUrl = `https://${host}/vol${vol}/part${part}/${nm}/info/price-history.json`;
-        
-        console.log('Trying basket:', priceUrl);
-        
-        await delay(500); // Небольшая задержка между хостами
-        
-        const priceResp = await axios.get(priceUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'application/json'
-          },
-          timeout: 5000
-        });
-        
-        if (priceResp.data && priceResp.data.length > 0) {
-          const latest = priceResp.data[priceResp.data.length - 1];
-          const price = latest.price?.RUB / 100 || 0;
-          
-          console.log('Success from basket! Price:', price);
-          
-          return res.json({
-            nm,
-            price,
-            currency: 'RUB',
-            timestamp: latest.dt
-          });
-        }
-      } catch (err) {
-        console.log('Basket failed:', host, err.message);
-        continue;
-      }
+    const priceRaw = product.salePriceU || product.priceU;
+    if (!priceRaw) {
+      return res.status(404).json({ error: 'цена не найдена' });
     }
-    
-    throw new Error('Все методы не сработали');
+
+    const price = priceRaw / 100;
+
+    console.log('Success! Found:', product.name, 'Price:', price);
+
+    res.json({
+      nm: product.id,
+      name: product.name,
+      price,
+      brand: product.brand,
+      rating: product.rating,
+      feedbacks: product.feedbacks
+    });
 
   } catch (e) {
     console.error('WB ERROR:', e.response?.status, e.message);
