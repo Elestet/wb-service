@@ -339,8 +339,14 @@ window.addEventListener('DOMContentLoaded', function(){
     
     var sellerId = data.sellerId || '-';
     var sellerName = data.sellerName || '-';
+    var productUrl = (function(){
+      var dom = (data.domain || 'ru');
+      var host = dom === 'kg' ? 'www.wildberries.kg' : dom === 'kz' ? 'www.wildberries.kz' : 'www.wildberries.ru';
+      return 'https://' + host + '/catalog/' + (data.nm || '') + '/detail.aspx';
+    })();
+    var nmLink = data.nm ? ('<a href="'+productUrl+'" target="_blank" rel="noopener noreferrer">'+data.nm+'</a>') : '-';
     var cols = [
-      data.nm || '-',
+      nmLink,
       mainImage,
       data.name || '-',
       data.brand || '-',
@@ -361,7 +367,7 @@ window.addEventListener('DOMContentLoaded', function(){
     
     for(var i=0;i<cols.length;i++){
       var td=document.createElement('td');
-      if(i === 1 || i === 12 || i === 16){ // image, warehouses, status use innerHTML
+      if(i === 0 || i === 1 || i === 12 || i === 16){ // link, image, warehouses, status use innerHTML
         td.innerHTML = cols[i];
       } else {
         td.textContent = cols[i];
