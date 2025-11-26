@@ -505,7 +505,11 @@ async function fetchSellerName(sellerId) {
   const url = `https://www.wildberries.ru/seller/${id}`;
   try {
     const resp = await axios.get(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'text/html' },
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/119.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7'
+      },
       timeout: 12000
     });
     const html = String(resp.data || '');
@@ -518,6 +522,24 @@ async function fetchSellerName(sellerId) {
     const h = html.match(/<h1[^>]*class=\"[^\"]*seller[^\"]*\"[^>]*>(.*?)<\/h1>/i);
     if (h && h[1]) {
       return h[1].replace(/<[^>]+>/g,'').trim();
+    }
+    // OpenGraph: <meta property="og:title" content="Имя продавца" />
+    const og = html.match(/<meta[^>]*property=\"og:title\"[^>]*content=\"([^\"]+)\"[^>]*>/i);
+    if (og && og[1]) {
+      return og[1].trim();
+    }
+    // JSON-LD: "@type":"Organization","name":"Имя"
+    const ldMatch = html.match(/\{[^}]*"@type"\s*:\s*"Organization"[^}]*\}/i);
+    if (ldMatch) {
+      try {
+        const obj = JSON.parse(ldMatch[0]);
+        if (obj && obj.name) return String(obj.name).trim();
+      } catch(_) {}
+    }
+    // Общий fallback: искать "Продавец" рядом с именем
+    const label = html.match(/Продавец[^:]*:\s*<[^>]*>\s*([^<]+)\s*<\//i);
+    if (label && label[1]) {
+      return label[1].trim();
     }
     // Если не нашли — вернём пустую строку
     return '';
