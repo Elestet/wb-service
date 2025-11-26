@@ -16,7 +16,7 @@ app.use(session({
   cookie: { maxAge: 24 * 60 * 60 * 1000 } // 24 часа
 }));
 
-// Учетные данные (в продакшене лучше использовать переменные окружения)
+// Учетные данные (статичные)
 const ADMIN_LOGIN = 'admin';
 const ADMIN_PASSWORD = 'tarelkastakan';
 
