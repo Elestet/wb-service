@@ -420,3 +420,178 @@ app.get('/wb-price-csv', async (req, res) => {
     return res.status(500).send('price\n');
   }
 });
+
+// ===== Max CSV endpoint: rich, single-row data for Sheets =====
+function safeGet(obj, path, defVal) {
+  try {
+    const parts = Array.isArray(path) ? path : String(path).split('.');
+    let cur = obj;
+    for (const p of parts) {
+      if (cur == null) return defVal;
+      cur = cur[p];
+    }
+    return cur == null ? defVal : cur;
+  } catch (_) {
+    return defVal;
+  }
+}
+
+function summarizeStocks(product) {
+  const sizes = Array.isArray(product?.sizes) ? product.sizes : [];
+  let totalQty = 0;
+  const whs = new Set();
+  for (const s of sizes) {
+    const stocks = Array.isArray(s.stocks) ? s.stocks : [];
+    for (const st of stocks) {
+      const q = Number(st.qty || 0);
+      if (!isNaN(q)) totalQty += q;
+      if (st.wh) whs.add(String(st.wh));
+    }
+  }
+  return { totalQty, warehouses: Array.from(whs) };
+}
+
+function currencyByDomain(domain) {
+  if (domain === 'kg') return 'KGS';
+  if (domain === 'kz') return 'KZT';
+  return 'RUB';
+}
+
+app.get('/wb-max-csv', async (req, res) => {
+  const nm = String(req.query.nm || '').trim();
+  const dest = String(req.query.dest || '').trim();
+  const domain = String(req.query.domain || 'ru').trim();
+  if (!nm) {
+    res.status(400).type('text/csv').send('error,message\n400,Missing nm');
+    return;
+  }
+
+  // Try v2 detail first with a few dests
+  const destCandidates = [];
+  if (dest) destCandidates.push(dest);
+  destCandidates.push('-1257786','-1029256','-1059509');
+
+  let product = null;
+  let source = null;
+  let priceU = 0;
+
+  function extractPriceFromProduct(p) {
+    if (!p) return 0;
+    const direct = Number(p.salePriceU || p.clientSalePriceU || p.basicPriceU || p.priceU || p.fullPriceU || 0);
+    if (!isNaN(direct) && direct > 0) return direct;
+    const sizes = Array.isArray(p.sizes) ? p.sizes : [];
+    for (const s of sizes) {
+      const pr = s && s.price;
+      if (!pr) continue;
+      const cands = [pr.basic, pr.product, pr.total, s.salePriceU, s.priceU];
+      for (const v of cands) {
+        const n = Number(v || 0);
+        if (!isNaN(n) && n > 0) return n;
+      }
+    }
+    return 0;
+  }
+
+  try {
+    for (const d of destCandidates) {
+      try {
+        const url = `https://card.wb.ru/cards/v2/detail?appType=1&curr=rub&dest=${d}&nm=${nm}`;
+        const r = await axios.get(url, { headers: { 'User-Agent': 'WildberriesApp/1.0' }, timeout: 10000 });
+        const products = r?.data?.data?.products || [];
+        if (products.length) {
+          product = products.find(p => String(p.id) === String(nm)) || products[0];
+          source = `v2:${d}`;
+          break;
+        }
+      } catch (_) {}
+    }
+
+    if (!product) {
+      // v1 fallback
+      try {
+        const url = `https://card.wb.ru/cards/v1/detail?appType=1&curr=rub&nm=${nm}`;
+        const r = await axios.get(url, { headers: { 'User-Agent': 'WildberriesApp/1.0' }, timeout: 10000 });
+        const products = r?.data?.data?.products || [];
+        if (products.length) {
+          product = products[0];
+          source = 'v1';
+        }
+      } catch (_) {}
+    }
+
+    // Basket CDN
+    let basketPrice = 0;
+    if (!product) {
+      try {
+        const vol = Math.floor(nm / 100000);
+        const part = Math.floor(nm / 1000);
+        const url = `https://basket-01.wb.ru/vol${vol}/part${part}/${nm}/info/ru/card.json`;
+        const r = await axios.get(url, { timeout: 8000 });
+        const data = r?.data || {};
+        const cand = Number(data.salePriceU || data.priceU || data.basicPriceU || 0);
+        if (!isNaN(cand) && cand > 0) {
+          basketPrice = cand;
+          source = 'basket';
+        }
+      } catch (_) {}
+    }
+
+    // HTML fallback
+    let htmlPrice = 0;
+    if (!product && basketPrice === 0) {
+      try {
+        const host = domain === 'kg' ? 'www.wildberries.kg' : domain === 'kz' ? 'www.wildberries.kz' : 'www.wildberries.ru';
+        const url = `https://${host}/catalog/${nm}/detail.aspx`;
+        const r = await axios.get(url, { timeout: 12000 });
+        const html = String(r?.data || '');
+        const m = html.match(/salePriceU":(\d+)/) || html.match(/priceU":(\d+)/);
+        if (m) {
+          htmlPrice = Number(m[1]);
+          source = `html:${domain}`;
+        }
+      } catch (_) {}
+    }
+
+    if (product) priceU = extractPriceFromProduct(product);
+    if ((!priceU || priceU <= 0) && basketPrice > 0) priceU = basketPrice;
+    if ((!priceU || priceU <= 0) && htmlPrice > 0) priceU = htmlPrice;
+
+    const price = priceU > 0 ? (priceU / 100) : 0;
+    const name = safeGet(product, 'name', '') || safeGet(product, 'product', '');
+    const brand = safeGet(product, 'brand', '');
+    const sellerId = safeGet(product, 'sellerId', '') || safeGet(product, 'supplierId', '');
+    const rating = safeGet(product, 'rating', 0);
+    const feedbacks = safeGet(product, 'feedbacks', 0);
+    const pics = Array.isArray(product?.pics) ? product.pics.length : (Array.isArray(product?.images) ? product.images.length : 0);
+    const { totalQty, warehouses } = summarizeStocks(product || {});
+    const destUsed = source && source.startsWith('v2:') ? source.split(':')[1] : (dest || '');
+    const currency = currencyByDomain(domain);
+    const url = domain === 'kg' ? `https://www.wildberries.kg/catalog/${nm}/detail.aspx` : domain === 'kz' ? `https://www.wildberries.kz/catalog/${nm}/detail.aspx` : `https://www.wildberries.ru/catalog/${nm}/detail.aspx`;
+
+    const header = [
+      'nm','name','brand','sellerId','price','currency','destUsed','domain','source','rating','feedbacks','images','stocksTotalQty','warehouses','url'
+    ];
+    const row = [
+      nm,
+      String(name).replace(/"/g,'""'),
+      String(brand).replace(/"/g,'""'),
+      String(sellerId),
+      String(price),
+      currency,
+      String(destUsed),
+      domain,
+      String(source || 'unknown'),
+      String(rating || 0),
+      String(feedbacks || 0),
+      String(pics || 0),
+      String(totalQty || 0),
+      String(warehouses.join('|')),
+      url
+    ];
+
+    const csv = `${header.join(',')}\n"${row[0]}","${row[1]}","${row[2]}","${row[3]}","${row[4]}","${row[5]}","${row[6]}","${row[7]}","${row[8]}","${row[9]}","${row[10]}","${row[11]}","${row[12]}","${row[13]}","${row[14]}"`;
+    res.status(200).type('text/csv').send(csv);
+  } catch (e) {
+    res.status(500).type('text/csv').send('error,message\n500,Internal error');
+  }
+});
