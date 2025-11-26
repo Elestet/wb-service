@@ -348,3 +348,75 @@ app.get('/wb-raw', async (req, res) => {
     res.status(500).json({ error: 'raw fetch failed', details: e.message, status: e.response?.status });
   }
 });
+
+// Простой текстовый ответ для Google Sheets без Apps Script: только число
+app.get('/wb-price-plain', async (req, res) => {
+  try {
+    const nm = req.query.nm;
+    if (!nm) return res.status(400).send('nm required');
+    // Переиспользуем основной обработчик через локальный вызов функций
+    const destList = [-1257786, -1029256, -1059509];
+    const appTypes = [1];
+    const endpoints = [
+      (appType,dest) => `https://card.wb.ru/cards/v2/detail?appType=${appType}&curr=rub&dest=${dest}&nm=${nm}`
+    ];
+    for (const dest of destList) {
+      for (const appType of appTypes) {
+        for (const buildUrl of endpoints) {
+          const url = buildUrl(appType, dest);
+          try {
+            const response = await axios.get(url, { headers: { 'User-Agent': 'WildberriesApp/1.0', 'Accept': 'application/json' }, timeout: 10000 });
+            const product = response.data?.data?.products?.find(p => String(p.id) === String(nm)) || response.data?.data?.products?.[0];
+            if (!product) continue;
+            let rawPrice = extractPrice(product);
+            if (rawPrice <= 0 && Array.isArray(product.sizes)) {
+              let sizeCandidates = [];
+              for (const s of product.sizes) {
+                const p = s && s.price;
+                if (!p) continue;
+                ['basic','product','total'].forEach(k => { if (typeof p[k] === 'number' && p[k] > 0) sizeCandidates.push(p[k]); });
+              }
+              if (sizeCandidates.length) rawPrice = Math.min(...sizeCandidates);
+            }
+            if (rawPrice > 0) {
+              res.setHeader('Content-Type','text/plain; charset=utf-8');
+              return res.send(String(rawPrice/100));
+            }
+          } catch (_) { /* try next */ }
+        }
+      }
+    }
+    // Fallback: HTML или basket
+    const htmlData = await fetchFromHtml(nm);
+    if (htmlData && htmlData.price > 0) {
+      res.setHeader('Content-Type','text/plain; charset=utf-8');
+      return res.send(String(htmlData.price));
+    }
+    const basketData = await tryBasket(Number(nm));
+    if (basketData && basketData.price > 0) {
+      res.setHeader('Content-Type','text/plain; charset=utf-8');
+      return res.send(String(basketData.price));
+    }
+    return res.status(404).send('price not found');
+  } catch (e) {
+    return res.status(500).send('error');
+  }
+});
+
+// CSV-ответ: заголовок + значение (2 строки)
+app.get('/wb-price-csv', async (req, res) => {
+  try {
+    const nm = req.query.nm;
+    if (!nm) return res.status(400).send('nm required');
+    const plainUrl = req.protocol + '://' + req.get('host') + '/wb-price-plain?nm=' + encodeURIComponent(nm);
+    try {
+      const r = await axios.get(plainUrl, { timeout: 10000 });
+      res.setHeader('Content-Type','text/csv; charset=utf-8');
+      return res.send('price\n' + String(r.data));
+    } catch (_) {
+      return res.status(404).send('price\n');
+    }
+  } catch (e) {
+    return res.status(500).send('price\n');
+  }
+});
