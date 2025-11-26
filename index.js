@@ -340,8 +340,7 @@ window.addEventListener('DOMContentLoaded', function(){
     var sellerId = data.sellerId || '-';
     var sellerName = data.sellerName || '-';
     var productUrl = (function(){
-      var dom = (data.domain || 'ru');
-      var host = dom === 'kg' ? 'www.wildberries.kg' : dom === 'kz' ? 'www.wildberries.kz' : 'www.wildberries.ru';
+      var host = 'www.wildberries.kg';
       return 'https://' + host + '/catalog/' + (data.nm || '') + '/detail.aspx';
     })();
     var nmLink = data.nm ? ('<a href="'+productUrl+'" target="_blank" rel="noopener noreferrer">'+data.nm+'</a>') : '-';
