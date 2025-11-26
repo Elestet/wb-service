@@ -1070,16 +1070,21 @@ function safeGet(obj, path, defVal) {
 function summarizeStocks(product) {
   const sizes = Array.isArray(product?.sizes) ? product.sizes : [];
   let totalQty = 0;
-  const whs = new Set();
+  const perWh = new Map();
   for (const s of sizes) {
     const stocks = Array.isArray(s.stocks) ? s.stocks : [];
     for (const st of stocks) {
       const q = Number(st.qty || 0);
-      if (!isNaN(q)) totalQty += q;
-      if (st.wh) whs.add(String(st.wh));
+      const wh = String(st.wh || '');
+      if (!isNaN(q)) {
+        totalQty += q;
+        if (wh) perWh.set(wh, (perWh.get(wh) || 0) + q);
+      }
     }
   }
-  return { totalQty, warehouses: Array.from(whs) };
+  const warehouses = Array.from(perWh.keys());
+  const warehousesQty = warehouses.map(wh => ({ wh, qty: perWh.get(wh) || 0 }));
+  return { totalQty, warehouses, warehousesQty };
 }
 
 function currencyByDomain(domain) {
