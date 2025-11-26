@@ -494,6 +494,34 @@ async function fetchFromHtml(nm) {
   return null;
 }
 
+// Получить человекочитаемое имя продавца по его ID
+async function fetchSellerName(sellerId) {
+  if (!sellerId) return '';
+  const id = String(sellerId).trim();
+  const url = `https://www.wildberries.ru/seller/${id}`;
+  try {
+    const resp = await axios.get(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'text/html' },
+      timeout: 12000
+    });
+    const html = String(resp.data || '');
+    // Популярные места: <title>Имя продавца – Wildberries</title>
+    const t = html.match(/<title>\s*(.*?)\s*[-–]\s*Wildberries\s*<\/title>/i);
+    if (t && t[1]) {
+      return t[1].trim();
+    }
+    // Альтернативный блок профиля: <h1 class="seller-name">Имя</h1>
+    const h = html.match(/<h1[^>]*class=\"[^\"]*seller[^\"]*\"[^>]*>(.*?)<\/h1>/i);
+    if (h && h[1]) {
+      return h[1].replace(/<[^>]+>/g,'').trim();
+    }
+    // Если не нашли — вернём пустую строку
+    return '';
+  } catch (_) {
+    return '';
+  }
+}
+
 // GET /wb-price?nm=АРТИКУЛ
 app.get('/wb-price', requireAuth, async (req, res) => {
   const nm = req.query.nm;
@@ -902,6 +930,11 @@ app.get('/wb-max', requireAuth, async (req, res) => {
   const name = product.name || product.imt_name || '';
   const brand = product.brand || product.selling?.brand_name || '';
   const sellerId = product.sellerId || product.supplierId || '';
+  // Попробуем получить человекочитаемое имя продавца
+  let sellerName = product.selling?.supplierName || product.supplierName || '';
+  if (!sellerName && sellerId) {
+    sellerName = await fetchSellerName(sellerId);
+  }
   const rating = product.rating || 0;
   const feedbacks = product.feedbacks || 0;
   const images = Array.isArray(product.pics) ? product.pics.length : (Array.isArray(product.images) ? product.images.length : 0);
@@ -940,6 +973,7 @@ app.get('/wb-max', requireAuth, async (req, res) => {
     name,
     brand,
     sellerId,
+    sellerName,
     price: priceU > 0 ? priceU / 100 : 0,
     currency,
     rating,
@@ -1102,13 +1136,16 @@ app.get('/wb-max-csv', async (req, res) => {
     const url = domain === 'kg' ? `https://www.wildberries.kg/catalog/${nm}/detail.aspx` : domain === 'kz' ? `https://www.wildberries.kz/catalog/${nm}/detail.aspx` : `https://www.wildberries.ru/catalog/${nm}/detail.aspx`;
 
     const header = [
-      'nm','name','brand','sellerId','price','currency','destUsed','domain','source','rating','feedbacks','images','stocksTotalQty','warehouses','url'
+      'nm','name','brand','sellerId','sellerName','price','currency','destUsed','domain','source','rating','feedbacks','images','stocksTotalQty','warehouses','url'
     ];
+    // Получим имя продавца, если доступно в продукте; иначе пусто (CSV должен быть быстрым)
+    let sellerName = safeGet(product, 'selling.supplierName', '') || safeGet(product, 'supplierName', '');
     const row = [
       nm,
       String(name).replace(/"/g,'""'),
       String(brand).replace(/"/g,'""'),
       String(sellerId),
+      String(sellerName).replace(/"/g,'""'),
       String(price),
       currency,
       String(destUsed),
@@ -1122,7 +1159,7 @@ app.get('/wb-max-csv', async (req, res) => {
       url
     ];
 
-    const csv = `${header.join(',')}\n"${row[0]}","${row[1]}","${row[2]}","${row[3]}","${row[4]}","${row[5]}","${row[6]}","${row[7]}","${row[8]}","${row[9]}","${row[10]}","${row[11]}","${row[12]}","${row[13]}","${row[14]}"`;
+    const csv = `${header.join(',')}\n"${row[0]}","${row[1]}","${row[2]}","${row[3]}","${row[4]}","${row[5]}","${row[6]}","${row[7]}","${row[8]}","${row[9]}","${row[10]}","${row[11]}","${row[12]}","${row[13]}","${row[14]}","${row[15]}"`;
     res.status(200).type('text/csv').send(csv);
   } catch (e) {
     res.status(500).type('text/csv').send('error,message\n500,Internal error');
