@@ -302,11 +302,20 @@ window.addEventListener('DOMContentLoaded', function(){
         '203490':'Казань',
         '205362':'Ростов‑на‑Дону'
       };
-      var whList = data.warehouses.map(function(w){
-        var id = String(w);
-        var name = whMap[id] || ('Склад '+id);
-        return '<span class="badge badge-primary">'+name+' ('+id+')</span>';
-      }).join(' ');
+      // Если пришли количества по складам — используем их
+      var items = Array.isArray(data.warehousesQty) && data.warehousesQty.length > 0
+        ? data.warehousesQty.map(function(it){
+            var id = String(it.wh);
+            var name = whMap[id] || ('Склад '+id);
+            var qty = Number(it.qty || 0);
+            return '<span class="badge badge-primary">'+name+' — '+qty+' шт</span>';
+          })
+        : data.warehouses.map(function(w){
+            var id = String(w);
+            var name = whMap[id] || ('Склад '+id);
+            return '<span class="badge badge-primary">'+name+' — ? шт</span>';
+          });
+      var whList = items.join(' ');
       warehouses = whList;
     }
     
@@ -858,16 +867,21 @@ app.get('/wb-price-csv', async (req, res) => {
 function summarizeStocks(product) {
   const sizes = Array.isArray(product?.sizes) ? product.sizes : [];
   let totalQty = 0;
-  const whs = new Set();
+  const perWh = new Map(); // wh -> qty sum
   for (const s of sizes) {
     const stocks = Array.isArray(s.stocks) ? s.stocks : [];
     for (const st of stocks) {
       const q = Number(st.qty || 0);
-      if (!isNaN(q)) totalQty += q;
-      if (st.wh) whs.add(String(st.wh));
+      const wh = String(st.wh || '');
+      if (!isNaN(q)) {
+        totalQty += q;
+        if (wh) perWh.set(wh, (perWh.get(wh) || 0) + q);
+      }
     }
   }
-  return { totalQty, warehouses: Array.from(whs) };
+  const warehouses = Array.from(perWh.keys());
+  const warehousesQty = warehouses.map(wh => ({ wh, qty: perWh.get(wh) || 0 }));
+  return { totalQty, warehouses, warehousesQty };
 }
 
 // ===== Endpoint для максимальных данных (JSON) =====
@@ -1005,7 +1019,7 @@ app.get('/wb-max', requireAuth, async (req, res) => {
   }
 
   // Остатки и склады
-  const { totalQty, warehouses } = summarizeStocks(product);
+  const { totalQty, warehouses, warehousesQty } = summarizeStocks(product);
 
   // Валюта по домену
   let currency = 'RUB';
@@ -1031,6 +1045,7 @@ app.get('/wb-max', requireAuth, async (req, res) => {
     mainImage,
     stocksQty: totalQty,
     warehouses,
+    warehousesQty,
     destUsed: destUsed || '',
     source: source || 'unknown',
     domain
