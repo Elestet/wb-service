@@ -337,31 +337,31 @@ window.addEventListener('DOMContentLoaded', function(){
       mainImage = imgHtml;
     }
     
-    var sellerIdVal = data.sellerId || '-';
-    var sellerNameVal = data.sellerName || '-';
+    var sellerId = data.sellerId || '-';
+    var sellerName = data.sellerName || '-';
     var cols = [
-      data.nm || '-',            // 0
-      mainImage,                 // 1 (HTML)
-      data.name || '-',          // 2
-      data.brand || '-',         // 3
-      sellerIdVal,               // 4
-      sellerNameVal,             // 5
-      price,                     // 6
-      currency,                  // 7
-      rating,                    // 8
-      feedbacks,                 // 9
-      images,                    // 10
-      stocksQty,                 // 11
-      warehouses,                // 12 (HTML)
-      destUsed,                  // 13
-      source,                    // 14
-      timeStr,                   // 15
-      status                     // 16 (HTML)
+      data.nm || '-',
+      mainImage,
+      data.name || '-',
+      data.brand || '-',
+      sellerId,
+      sellerName,
+      price,
+      currency,
+      rating,
+      feedbacks,
+      images,
+      stocksQty,
+      warehouses,
+      destUsed,
+      source,
+      timeStr,
+      status
     ];
     
     for(var i=0;i<cols.length;i++){
       var td=document.createElement('td');
-      if(i === 1 || i === 12 || i === 16){
+      if(i === 1 || i === 12 || i === 16){ // image, warehouses, status use innerHTML
         td.innerHTML = cols[i];
       } else {
         td.textContent = cols[i];
