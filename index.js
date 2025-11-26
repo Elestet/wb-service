@@ -289,8 +289,25 @@ window.addEventListener('DOMContentLoaded', function(){
     
     var warehouses = '-';
     if(data.warehouses && data.warehouses.length > 0){
-      var whList = data.warehouses.map(function(w){ return '<span class="badge badge-primary">'+w+'</span>'; }).join(' ');
-      warehouses = whList + ' <span style="color:#636e72;font-size:11px">(ID складов WB)</span>';
+      // Преобразуем ID складов в человекочитаемые названия
+      var whMap = {
+        '206348':'Кольцово (Екатеринбург)',
+        '120762':'Подольск (Мск область)',
+        '301760':'Новосиб (Сортировочный)',
+        '507':'Электросталь',
+        '117986':'Санкт‑Петербург Север',
+        '206828':'Софьино',
+        '204151':'Марушкинское',
+        '204163':'Тверь',
+        '203490':'Казань',
+        '205362':'Ростов‑на‑Дону'
+      };
+      var whList = data.warehouses.map(function(w){
+        var id = String(w);
+        var name = whMap[id] || ('Склад '+id);
+        return '<span class="badge badge-primary">'+name+' ('+id+')</span>';
+      }).join(' ');
+      warehouses = whList;
     }
     
     var destUsed = (data.destUsed || '-');
