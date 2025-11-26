@@ -209,7 +209,7 @@ tbody tr:hover{background:#f8f9fa}
       <th>Фото товара</th>
       <th>Название</th>
       <th>Бренд</th>
-      <th>Продавец ID</th>
+      <th>Продавец / ID</th>
       <th>Цена</th>
       <th>Валюта</th>
       <th>Рейтинг</th>
@@ -336,12 +336,13 @@ window.addEventListener('DOMContentLoaded', function(){
       mainImage = imgHtml;
     }
     
+    var sellerDisplay = (data.sellerName ? (data.sellerName + ' / ' + (data.sellerId || '')) : (data.sellerId || '-'));
     var cols = [
       data.nm || '-',
       mainImage,
       data.name || '-',
       data.brand || '-',
-      data.sellerId || '-',
+      sellerDisplay,
       price,
       currency,
       rating,
@@ -974,6 +975,7 @@ app.get('/wb-max', requireAuth, async (req, res) => {
     brand,
     sellerId,
     sellerName,
+    sellerCombined: sellerName ? `${sellerName} / ${sellerId}` : sellerId,
     price: priceU > 0 ? priceU / 100 : 0,
     currency,
     rating,
