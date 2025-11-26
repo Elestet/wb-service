@@ -714,42 +714,68 @@ app.get('/wb-price-plain', async (req, res) => {
 
 // CSV с ценой и названием для Google Sheets - ПУБЛИЧНЫЙ API
 app.get('/wb-price-csv', async (req, res) => {
-  try {
-    const nm = req.query.nm;
-    const domain = req.query.domain || 'ru';
-    if (!nm) return res.status(400).send('price,name\n,');
-    
-    // Получаем полные данные через wb-max-csv
-    const maxUrl = req.protocol + '://' + req.get('host') + '/wb-max-csv?nm=' + encodeURIComponent(nm) + '&domain=' + domain;
+  const nmRaw = req.query.nm;
+  const domain = (req.query.domain || 'ru').trim();
+  if (!nmRaw) return res.status(400).type('text/csv').send('price,name\n,');
+  const nm = String(nmRaw).trim();
+
+  // Базовый список dest (георегионы) для попыток получения карточки
+  const destList = ['-1257786','-1029256','-1059509'];
+  let product = null;
+  let priceU = 0;
+
+  // Пытаемся через v2 detail
+  for (const dest of destList) {
+    const url = `https://card.wb.ru/cards/v2/detail?appType=1&curr=rub&dest=${dest}&nm=${nm}`;
     try {
-      const r = await axios.get(maxUrl, { timeout: 15000 });
-      const csvData = String(r.data);
-      const lines = csvData.split('\n');
-      
-      if (lines.length >= 2) {
-        // Парсим CSV чтобы достать price и name
-        const headers = lines[0].split(',');
-        const values = lines[1];
-        
-        // Простой парсинг: ищем price и name в кавычках
-        const priceMatch = values.match(/"(\d+\.?\d*)"/);
-        const nameMatch = values.match(/,"([^"]+)"/);
-        
-        const price = priceMatch ? priceMatch[1] : '';
-        const name = nameMatch ? nameMatch[1] : '';
-        
-        res.setHeader('Content-Type','text/csv; charset=utf-8');
-        return res.send('price,name\n' + price + ',"' + name + '"');
-      }
-      
-      return res.status(404).send('price,name\n,');
-    } catch (e) {
-      console.error('wb-price-csv error:', e.message);
-      return res.status(404).send('price,name\n,');
-    }
-  } catch (e) {
-    return res.status(500).send('price,name\n,');
+      const r = await axios.get(url, { headers: { 'User-Agent':'WildberriesApp/1.0' }, timeout: 8000 });
+      const products = r?.data?.data?.products || [];
+      if (!products.length) continue;
+      product = products.find(p => String(p.id) === nm) || products[0];
+      priceU = extractPrice(product);
+      if (priceU > 0) break; // нашли валидную цену
+    } catch (_) { /* пробуем следующий dest */ }
   }
+
+  // Fallback v1 если не нашли
+  if (!product || priceU <= 0) {
+    try {
+      const url = `https://card.wb.ru/cards/v1/detail?appType=1&curr=rub&nm=${nm}`;
+      const r = await axios.get(url, { headers: { 'User-Agent':'WildberriesApp/1.0' }, timeout: 8000 });
+      const products = r?.data?.data?.products || [];
+      if (products.length) {
+        product = products.find(p => String(p.id) === nm) || products[0];
+        if (priceU <= 0) priceU = extractPrice(product);
+      }
+    } catch (_) {}
+  }
+
+  // Basket CDN fallback
+  if ((!product || priceU <= 0)) {
+    const basketData = await tryBasket(Number(nm));
+    if (basketData && basketData.price > 0) {
+      return res.type('text/csv').send('price,name\n' + String(basketData.price) + ',"' + (basketData.name || '') + '"');
+    }
+  }
+
+  // HTML fallback
+  if (priceU <= 0) {
+    const htmlData = await fetchFromHtml(nm);
+    if (htmlData && htmlData.price > 0) {
+      return res.type('text/csv').send('price,name\n' + String(htmlData.price) + ',""');
+    }
+  }
+
+  if (!product) {
+    return res.status(404).type('text/csv').send('price,name\n,');
+  }
+
+  // Формируем финальные значения
+  const name = product.name || product.imt_name || '';
+  const price = priceU > 0 ? (priceU / 100) : 0;
+  const safeName = String(name).replace(/"/g,'""');
+
+  res.type('text/csv').send('price,name\n' + String(price) + ',"' + safeName + '"');
 });
 
 // Функция для подсчета остатков и складов
