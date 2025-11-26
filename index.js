@@ -218,6 +218,7 @@ tbody tr:hover{background:#f8f9fa}
       <th>Кол-во фото</th>
       <th>Остатки</th>
       <th>Склады</th>
+      <th>Модель</th>
       <th>Dest</th>
       <th>Источник</th>
       <th>Время</th>
@@ -287,7 +288,20 @@ window.addEventListener('DOMContentLoaded', function(){
     var images = (data.images || 0) + ' ' + (data.images ? '(фото)' : '');
     var stocksQty = (data.stocksQty || 0) + ' ' + (data.stocksQty ? '(шт на складах)' : '');
     
-    var warehouses = '-';
+      var warehouses = '-';
+      var fulfillmentWh = {
+        '206348': true, // Кольцово (Екатеринбург)
+        '120762': true, // Подольск
+        '301760': true, // Новосибирск (сортировочный)
+        '507': true,    // Электросталь
+        '117986': true, // СПб Север
+        '206828': true, // Софьино
+        '204151': true, // Марушкинское
+        '204163': true, // Тверь
+        '203490': true, // Казань
+        '205362': true  // Ростов-на-Дону
+      };
+      var modelText = '-';
     if(data.warehouses && data.warehouses.length > 0){
       // Преобразуем ID складов в человекочитаемые названия
       var whMap = {
@@ -317,6 +331,20 @@ window.addEventListener('DOMContentLoaded', function(){
           });
       var whList = items.join(' ');
       warehouses = whList;
+      // Определяем модель: FBO, если есть остатки на любом из fulfillment складов; иначе FBS
+      var hasFulfillment = false;
+      if (Array.isArray(data.warehousesQty) && data.warehousesQty.length > 0) {
+        for (var j=0;j<data.warehousesQty.length;j++){
+          var wid = String(data.warehousesQty[j].wh || '');
+          if (fulfillmentWh[wid]) { hasFulfillment = true; break; }
+        }
+      } else if (Array.isArray(data.warehouses)) {
+        for (var k=0;k<data.warehouses.length;k++){
+          var wid2 = String(data.warehouses[k] || '');
+          if (fulfillmentWh[wid2]) { hasFulfillment = true; break; }
+        }
+      }
+      modelText = hasFulfillment ? 'FBO' : 'FBS';
     }
     
     var destUsed = (data.destUsed || '-');
@@ -384,6 +412,7 @@ window.addEventListener('DOMContentLoaded', function(){
       images,
       stocksQty,
       warehouses,
+      modelText,
       destUsed,
       source,
       timeStr,
@@ -392,7 +421,7 @@ window.addEventListener('DOMContentLoaded', function(){
     
     for(var i=0;i<cols.length;i++){
       var td=document.createElement('td');
-      if(i === 0 || i === 1 || i === 12 || i === 16){ // link, image, warehouses, status use innerHTML
+      if(i === 0 || i === 1 || i === 12 || i === 13 || i === 17){ // link, image, warehouses, model (text), status use innerHTML for rich fields
         td.innerHTML = cols[i];
       } else {
         td.textContent = cols[i];
