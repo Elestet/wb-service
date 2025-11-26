@@ -712,21 +712,43 @@ app.get('/wb-price-plain', async (req, res) => {
   }
 });
 
-// CSV-ответ: заголовок + значение (2 строки)
+// CSV с ценой и названием для Google Sheets - ПУБЛИЧНЫЙ API
 app.get('/wb-price-csv', async (req, res) => {
   try {
     const nm = req.query.nm;
-    if (!nm) return res.status(400).send('nm required');
-    const plainUrl = req.protocol + '://' + req.get('host') + '/wb-price-plain?nm=' + encodeURIComponent(nm);
+    const domain = req.query.domain || 'ru';
+    if (!nm) return res.status(400).send('price,name\n,');
+    
+    // Получаем полные данные через wb-max-csv
+    const maxUrl = req.protocol + '://' + req.get('host') + '/wb-max-csv?nm=' + encodeURIComponent(nm) + '&domain=' + domain;
     try {
-      const r = await axios.get(plainUrl, { timeout: 10000 });
-      res.setHeader('Content-Type','text/csv; charset=utf-8');
-      return res.send('price\n' + String(r.data));
-    } catch (_) {
-      return res.status(404).send('price\n');
+      const r = await axios.get(maxUrl, { timeout: 15000 });
+      const csvData = String(r.data);
+      const lines = csvData.split('\n');
+      
+      if (lines.length >= 2) {
+        // Парсим CSV чтобы достать price и name
+        const headers = lines[0].split(',');
+        const values = lines[1];
+        
+        // Простой парсинг: ищем price и name в кавычках
+        const priceMatch = values.match(/"(\d+\.?\d*)"/);
+        const nameMatch = values.match(/,"([^"]+)"/);
+        
+        const price = priceMatch ? priceMatch[1] : '';
+        const name = nameMatch ? nameMatch[1] : '';
+        
+        res.setHeader('Content-Type','text/csv; charset=utf-8');
+        return res.send('price,name\n' + price + ',"' + name + '"');
+      }
+      
+      return res.status(404).send('price,name\n,');
+    } catch (e) {
+      console.error('wb-price-csv error:', e.message);
+      return res.status(404).send('price,name\n,');
     }
   } catch (e) {
-    return res.status(500).send('price\n');
+    return res.status(500).send('price,name\n,');
   }
 });
 
