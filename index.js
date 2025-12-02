@@ -28,7 +28,12 @@ app.use(session({
   secret: 'wb-helper-secret-key-2025',
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 24 * 60 * 60 * 1000 } // 24 часа
+  cookie: { 
+    maxAge: 24 * 60 * 60 * 1000, // 24 часа
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production', // HTTPS в продакшене
+    sameSite: 'lax'
+  }
 }));
 
 // Учетные данные (статичные)
@@ -55,6 +60,11 @@ const randomDelay = (minSec, maxSec) => {
 
 // Middleware для проверки авторизации
 function requireAuth(req, res, next) {
+  console.log('Auth check:', { 
+    sessionID: req.sessionID, 
+    isAuthenticated: req.session?.isAuthenticated,
+    user: req.session?.user 
+  });
   if (req.session && req.session.isAuthenticated) {
     return next();
   }
@@ -132,12 +142,22 @@ document.getElementById('loginForm').onsubmit = function(e) {
 // API для входа
 app.post('/api/login', (req, res) => {
   const { login, password } = req.body;
+  console.log('Login attempt:', { login, hasPassword: !!password, session: req.sessionID });
   if (login === ADMIN_LOGIN && password === ADMIN_PASSWORD) {
     req.session.isAuthenticated = true;
     req.session.user = login;
-    return res.json({ success: true });
+    req.session.save((err) => {
+      if (err) {
+        console.error('Session save error:', err);
+        return res.json({ success: false, message: 'Ошибка сохранения сессии' });
+      }
+      console.log('Login successful, session saved:', req.sessionID);
+      return res.json({ success: true });
+    });
+  } else {
+    console.log('Login failed: invalid credentials');
+    res.json({ success: false, message: 'Неверный логин или пароль' });
   }
-  res.json({ success: false, message: 'Неверный логин или пароль' });
 });
 
 // API для выхода
