@@ -2,6 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
 const session = require('express-session');
+const cookieParser = require('cookie-parser');
 const fs = require('fs');
 const path = require('path');
 
@@ -24,6 +25,7 @@ const LEGAL_NAMES_CACHE = new Map();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 app.use(session({
   secret: 'wb-helper-secret-key-2025',
   resave: false,
@@ -60,10 +62,9 @@ const randomDelay = (minSec, maxSec) => {
 
 // Middleware для проверки авторизации
 function requireAuth(req, res, next) {
-  // Проверяем токен в заголовке Authorization
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7);
+  // Проверяем токен в cookie
+  const token = req.cookies?.authToken;
+  if (token) {
     try {
       const decoded = Buffer.from(token, 'base64').toString('utf-8');
       const [login, password] = decoded.split(':');
@@ -75,9 +76,19 @@ function requireAuth(req, res, next) {
     }
   }
   
-  // Фоллбэк на старые сессии (для совместимости)
-  if (req.session && req.session.isAuthenticated) {
-    return next();
+  // Проверяем токен в заголовке Authorization
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const bearerToken = authHeader.substring(7);
+    try {
+      const decoded = Buffer.from(bearerToken, 'base64').toString('utf-8');
+      const [login, password] = decoded.split(':');
+      if (login === ADMIN_LOGIN && password === ADMIN_PASSWORD) {
+        return next();
+      }
+    } catch (e) {
+      // Невалидный токен
+    }
   }
   
   res.redirect('/login');
@@ -157,8 +168,14 @@ document.getElementById('loginForm').onsubmit = function(e) {
 app.post('/api/login', (req, res) => {
   const { login, password } = req.body;
   if (login === ADMIN_LOGIN && password === ADMIN_PASSWORD) {
-    // Создаём простой токен (base64 от логина:пароля)
+    // Создаём токен и ставим в cookie
     const token = Buffer.from(`${login}:${password}`).toString('base64');
+    res.cookie('authToken', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 24 * 60 * 60 * 1000 // 24 часа
+    });
     return res.json({ success: true, token });
   }
   res.json({ success: false, message: 'Неверный логин или пароль' });
@@ -170,8 +187,8 @@ app.get('/api/logout', (req, res) => {
   res.redirect('/login');
 });
 
-// Главная страница (БЕЗ авторизации - публичный доступ)
-app.get('/', (req, res) => {
+// Главная страница (только для авторизованных)
+app.get('/', requireAuth, (req, res) => {
   res.send(`<!doctype html>
 <html><head><meta charset="utf-8" />
 <title>WB Helper MAX</title>
@@ -239,7 +256,7 @@ tbody tr:hover{background:#f8f9fa}
   <button id="fetch" class="success">📊 Получить данные</button>
   <button id="open" class="secondary">🔗 Открыть товар</button>
   <button id="clear" class="danger">🗑️ Очистить таблицу</button>
-
+  <button onclick="localStorage.removeItem('authToken');window.location.href='/login'" style="background:#636e72">🚪 Выход</button>
 </div>
 <div class="table-wrapper">
   <table id="dataTable">
@@ -271,6 +288,13 @@ tbody tr:hover{background:#f8f9fa}
 </div>
 <script>
 window.addEventListener('DOMContentLoaded', function(){
+  // Проверяем авторизацию
+  var token = localStorage.getItem('authToken');
+  if (!token) {
+    window.location.href = '/login';
+    return;
+  }
+  
   var nmEl = document.getElementById('nm');
   var domainEl = document.getElementById('domain');
   var destEl = document.getElementById('dest');
@@ -297,7 +321,11 @@ window.addEventListener('DOMContentLoaded', function(){
     btnFetch.disabled = true;
     btnFetch.textContent = '⏳ Загрузка...';
     
-    fetch(url)
+    fetch(url, {
+      headers: {
+        'Authorization': 'Bearer ' + token
+      }
+    })
       .then(function(r){return r.json();})
       .then(function(data){
         addRow(data);
@@ -740,7 +768,7 @@ async function fetchLegalEntityName(sellerId) {
 }
 
 // GET /wb-price?nm=АРТИКУЛ
-app.get('/wb-price', async (req, res) => {
+app.get('/wb-price', requireAuth, async (req, res) => {
   const nm = req.query.nm;
   if (!nm) return res.status(400).json({ error: 'nm (артикул) обязателен' });
 
@@ -891,7 +919,7 @@ app.listen(PORT, () => {
 });
 
 // Дополнительный endpoint для просмотра сырого ответа
-app.get('/wb-raw', async (req, res) => {
+app.get('/wb-raw', requireAuth, async (req, res) => {
   const nm = req.query.nm;
   if (!nm) return res.status(400).json({ error: 'nm обязателен' });
   try {
@@ -1045,7 +1073,7 @@ function summarizeStocks(product) {
 }
 
 // ===== Endpoint для максимальных данных (JSON) =====
-app.get('/wb-max', async (req, res) => {
+app.get('/wb-max', requireAuth, async (req, res) => {
   const nm = String(req.query.nm || '').trim();
   const dest = String(req.query.dest || '').trim();
   const domain = String(req.query.domain || 'ru').trim();
