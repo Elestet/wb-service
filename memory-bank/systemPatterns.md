@@ -14,6 +14,7 @@ Design Patterns:
 - Fallback chaining for external data.
 - Safe getters (`safeGet`) for CSV formatting.
 - Summarization of stocks to collect `warehouses` and `stocksQty`.
+- Category extraction from API `entity` field (auto-capitalized for display).
 
 Critical Paths:
 - `/wb-price-csv`: minimal, fast, public; returns `price,name`.
