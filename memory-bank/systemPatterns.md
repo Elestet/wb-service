@@ -15,8 +15,10 @@ Design Patterns:
 - Safe getters (`safeGet`) for CSV formatting.
 - Summarization of stocks to collect `warehouses` and `stocksQty`.
 - Category extraction from API `entity` field (auto-capitalized for display).
+- Auth via httpOnly cookies (token = base64(login:password)) for serverless compatibility.
 
 Critical Paths:
 - `/wb-price-csv`: minimal, fast, public; returns `price,name`.
-- `/wb-max`: rich JSON with seller info, stocks, rating, images.
+- `/wb-max`: rich JSON with seller info, stocks, rating, images (requires auth).
 - `/wb-max-csv`: rich CSV including `sellerName` column.
+- `/api/login`: POST endpoint sets httpOnly cookie with auth token.

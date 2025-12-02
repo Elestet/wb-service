@@ -1,6 +1,7 @@
 # Active Context
 
 Current Focus:
+- **АВТОРИЗАЦИЯ: httpOnly cookies для защиты (работает на Vercel serverless)**
 - Показ ВСЕХ продавцов (не только ИП): название юрлица с ID в скобках
 - **КАТЕГОРИИ: парсинг из API поля `entity` - реальные русские названия без статичных словарей**
 - Добавлены колонки: Категория товара и Цвет
@@ -10,7 +11,16 @@ Current Focus:
 
 Recent Changes (Dec 2, 2025):
 
-**LATEST UPDATE - CATEGORY PARSING FROM API:**
+**LATEST UPDATE - AUTH FIX FOR VERCEL:**
+- **CRITICAL FIX**: Авторизация через httpOnly cookies (работает на serverless)
+- **PACKAGE**: Добавлен `cookie-parser` для работы с cookies
+- **LOGIN FLOW**: POST /api/login устанавливает cookie с base64 токеном
+- **MIDDLEWARE**: requireAuth проверяет cookie (приоритет) и Authorization header (fallback)
+- **SECURITY**: httpOnly=true, secure в production, sameSite=lax, maxAge=24h
+- **TESTED LOCALLY**: ✅ Все тесты прошли перед деплоем
+- **RESULT**: Стабильная авторизация на Vercel без проблем с сессиями
+
+**UPDATE - CATEGORY PARSING FROM API:**
 - **CRITICAL CHANGE**: Категории теперь парсятся из поля `product.entity` (API v2)
 - **DATA SOURCE**: Поле `entity` содержит название категории на русском языке
 - **REMOVED**: Удалён статичный маппинг `subjectId → название` (40+ строк кода)
