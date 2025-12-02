@@ -17,12 +17,12 @@ What Works:
 - **Caching**: Каждый продавец парсится только 1 раз за сессию (Map cache)
 - **Anti-block measures**: Random delays (0.5-2s), realistic Chrome headers, multi-domain tries
 
-Latest Breakthrough (Dec 2, 2025):
-- **ENABLED `fetchLegalEntityName()`**: Function now ACTIVE and called for every sellerId
-- Parses legal entity names from `wildberries.{kg,kz,ru}/seller/{id}` pages
-- Extracts full legal names: "Общество с ограниченной ответственностью ...", "Индивидуальный предприниматель ..."
-- **Robust fallback**: If WB blocks (code 498) → uses `product.supplier` (short name from API)
-- **Result**: System now ATTEMPTS to get full legal entity for ANY article, not just 3 predefined ones!
+Latest Update (Dec 2, 2025):
+- **DISABLED parsing**: WB blocks ALL parsing attempts (498, captcha, anti-bot)
+- **Current approach**: Show only sellerId + storeName (from API)
+- **Two columns**: "Продавец (ID)" shows ID only, "Магазин" shows trade name
+- **Decision**: Parsing requires Puppeteer/Selenium on dedicated server (not Vercel)
+- **Result**: Fast and reliable, but no legal entity names until proper scraping solution
 
 Performance Fixes (Dec 2, 2025):
 - Eliminated slow `fetchStoreNameFromProductPage` (3+ requests per call)

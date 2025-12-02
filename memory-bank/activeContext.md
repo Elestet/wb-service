@@ -9,19 +9,16 @@ Current Focus:
 
 Recent Changes (Dec 2, 2025):
 
-**LATEST UPDATE - LIVE PARSING OF LEGAL ENTITIES:**
-- **BREAKTHROUGH**: Включен АКТИВНЫЙ парсинг юридических лиц для ВСЕХ продавцов с WB!
-- **MECHANISM**: Трёхуровневая система получения данных о продавце:
-  1. Проверка статической базы `sellers-db.json` (3 продавца: KOTON, QUATRO, АНТАРЕС)
-  2. **LIVE PARSING**: Парсинг страницы продавца `wildberries.{kg,kz,ru}/seller/{sellerId}`
-  3. Fallback на краткое торговое название из `product.supplier`
-- **CACHING**: Добавлен Map-кэш `LEGAL_NAMES_CACHE` - один продавец парсится только 1 раз за сессию
-- **ANTI-BLOCK**: Улучшены HTTP-заголовки (Chrome 120 User-Agent, полный набор Sec-Fetch-*)
-- **ANTI-BLOCK**: Случайные задержки 0.5-2 сек между запросами к разным доменам
-- **PARSING**: Регулярные выражения для извлечения ООО/ИП/АО из HTML реквизитов продавца
-- **ROBUSTNESS**: При блокировке WB (код 498) система использует fallback без остановки
-- **FLOW**: `/wb-max` и `/wb-max-csv` теперь вызывают `fetchLegalEntityName()` для каждого sellerId
-- **RESULT**: Для ЛЮБОГО артикула система пытается получить полное юридическое лицо продавца!
+**LATEST UPDATE - SIMPLIFIED SELLER DATA:**
+- **DECISION**: Отключен парсинг юридических лиц (WB блокирует все методы)
+- **CURRENT STATE**: Показываем только sellerId + storeName (торговое название из API)
+- **TWO COLUMNS**: 
+  1. `Продавец (ID)` - показывает только ID продавца (например "ID: 1399211")
+  2. `Магазин` - торговое название из `product.supplier` (например "Мариям")
+- **REASON**: Wildberries блокирует парсинг (код 498, капча, анти-бот защита)
+- **FUTURE**: Для полных юрлиц требуется Puppeteer/Selenium на отдельном VPS
+- **DATABASE**: `sellers-db.json` оставлен для справки но не используется
+- **PERFORMANCE**: Быстрая загрузка ~1-3 сек без попыток парсинга
 
 Previous Changes:
 - **NEW FEATURE**: Добавлены колонки "Категория" и "Цвет" между Продавцом и Ценой

@@ -1129,27 +1129,9 @@ app.get('/wb-max', requireAuth, async (req, res) => {
   const brand = product.brand || product.selling?.brand_name || '';
   const sellerId = product.sellerId || product.supplierId || '';
   
-  // Получаем данные продавца
-  let sellerName = ''; // Полное юридическое лицо
+  // Получаем данные продавца - ТОЛЬКО ID и магазин
+  let sellerName = ''; // Пока отключено (требуется Puppeteer)
   let storeName = product.supplier || ''; // Краткое торговое название (магазин)
-  
-  if (sellerId) {
-    // 1. Проверяем статическую базу
-    if (SELLERS_DB[String(sellerId)]) {
-      sellerName = SELLERS_DB[String(sellerId)].legalName || '';
-      storeName = SELLERS_DB[String(sellerId)].store || storeName;
-      console.log(`✓ Из базы для ${sellerId}: ${sellerName}`);
-    } else {
-      // 2. Парсим со страницы продавца на WB
-      const legalName = await fetchLegalEntityName(sellerId);
-      if (legalName) {
-        sellerName = legalName;
-        console.log(`✓ Спарсено для ${sellerId}: ${sellerName}`);
-      } else {
-        console.log(`⚠ Для ${sellerId} используем только магазин: ${storeName}`);
-      }
-    }
-  }
   
   // Категория товара
   let category = '';
@@ -1370,23 +1352,9 @@ app.get('/wb-max-csv', async (req, res) => {
       'nm','name','brand','sellerId','sellerName','storeName','category','color','price','currency','destUsed','domain','source','rating','feedbacks','images','stocksTotalQty','warehouses','url'
     ];
     
-    // Получаем данные продавца
-    let sellerName = ''; // Полное юридическое лицо
+    // Получаем данные продавца - ТОЛЬКО ID и магазин
+    let sellerName = ''; // Пока отключено (требуется Puppeteer)
     let storeName = safeGet(product, 'supplier', '') || ''; // Краткое торговое название
-    
-    if (sellerId) {
-      // 1. Проверяем статическую базу
-      if (SELLERS_DB[String(sellerId)]) {
-        sellerName = SELLERS_DB[String(sellerId)].legalName || '';
-        storeName = SELLERS_DB[String(sellerId)].store || storeName;
-      } else {
-        // 2. Парсим со страницы продавца на WB
-        const legalName = await fetchLegalEntityName(sellerId);
-        if (legalName) {
-          sellerName = legalName;
-        }
-      }
-    }
     
     // Категория
     let category = '';
