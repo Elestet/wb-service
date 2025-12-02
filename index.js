@@ -563,6 +563,39 @@ async function fetchFromHtml(nm) {
   return null;
 }
 
+// Получить ФИО продавца со страницы продавца (работает только для ИП)
+async function fetchSellerPersonName(sellerId) {
+  if (!sellerId) return '';
+  const id = String(sellerId).trim();
+  const url = `https://www.wildberries.ru/seller/${id}`;
+  try {
+    const resp = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0',
+        'Accept': 'text/html'
+      },
+      timeout: 5000
+    });
+    const html = String(resp.data || '');
+    
+    // Для ИП в title обычно: "ИП Иванов Иван Иванович – Wildberries"
+    const ipMatch = html.match(/<title>\s*ИП\s+([А-ЯЁа-яё\s]+?)\s*[-–—]\s*Wildberries/i);
+    if (ipMatch && ipMatch[1]) {
+      return ipMatch[1].trim();
+    }
+    
+    // Альтернативный вариант - ищем в meta og:title
+    const ogMatch = html.match(/<meta[^>]*property="og:title"[^>]*content="ИП\s+([А-ЯЁа-яё\s]+?)"/i);
+    if (ogMatch && ogMatch[1]) {
+      return ogMatch[1].trim();
+    }
+    
+    return '';
+  } catch (_) {
+    return '';
+  }
+}
+
 // GET /wb-price?nm=АРТИКУЛ
 app.get('/wb-price', requireAuth, async (req, res) => {
   const nm = req.query.nm;
@@ -977,9 +1010,15 @@ app.get('/wb-max', requireAuth, async (req, res) => {
   const brand = product.brand || product.selling?.brand_name || '';
   const sellerId = product.sellerId || product.supplierId || '';
   
-  // Получаем название магазина/продавца из API
-  let storeName = product.supplier || product.selling?.supplierName || product.supplierName || '';
-  let sellerName = storeName;
+  // Название магазина (юрлицо/бренд) - всегда из API
+  let storeName = product.supplier || '';
+  
+  // ФИО продавца (только для ИП) - пытаемся получить со страницы продавца
+  let sellerName = '';
+  if (sellerId && storeName && /ИП|Предприниматель/i.test(storeName)) {
+    // Только если это ИП - пробуем парсить ФИО
+    sellerName = await fetchSellerPersonName(sellerId);
+  }
   
   const rating = product.rating || 0;
   const feedbacks = product.feedbacks || 0;
@@ -1157,9 +1196,12 @@ app.get('/wb-max-csv', async (req, res) => {
     const header = [
       'nm','name','brand','sellerId','sellerName','storeName','price','currency','destUsed','domain','source','rating','feedbacks','images','stocksTotalQty','warehouses','url'
     ];
-    // Получим название магазина/продавца из API
-    let storeName = safeGet(product, 'supplier', '') || safeGet(product, 'selling.supplierName', '') || safeGet(product, 'supplierName', '');
-    let sellerName = storeName;
+    // Название магазина из API
+    let storeName = safeGet(product, 'supplier', '') || '';
+    
+    // ФИО продавца (только для ИП) - опционально для CSV
+    let sellerName = '';
+    // В CSV не парсим ФИО для скорости - можно включить при необходимости
     
     const row = [
       nm,
