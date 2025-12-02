@@ -225,6 +225,7 @@ tbody tr:hover{background:#f8f9fa}
       <th>Название</th>
       <th>Бренд</th>
       <th>Продавец (ID)</th>
+      <th>Магазин</th>
       <th>Категория</th>
       <th>Цвет</th>
       <th>Цена</th>
@@ -417,16 +418,22 @@ window.addEventListener('DOMContentLoaded', function(){
     }
     
     var sellerId = data.sellerId || '-';
-    var storeName = data.storeName || '-';
-    // Формируем строку: Название (ID)
+    var sellerName = data.sellerName || '-'; // Полное юрлицо
+    var storeName = data.storeName || '-';   // Торговое название (магазин)
+    
+    // Формируем строку для продавца: Полное юрлицо (ID)
     var sellerDisplay = '-';
-    if (storeName !== '-' && sellerId !== '-') {
-      sellerDisplay = storeName + ' (' + sellerId + ')';
-    } else if (storeName !== '-') {
-      sellerDisplay = storeName;
+    if (sellerName !== '-' && sellerId !== '-') {
+      sellerDisplay = sellerName + ' (' + sellerId + ')';
+    } else if (sellerName !== '-') {
+      sellerDisplay = sellerName;
     } else if (sellerId !== '-') {
       sellerDisplay = 'ID: ' + sellerId;
     }
+    
+    // Магазин - отдельно
+    var storeDisplay = storeName !== '-' ? storeName : '-';
+    
     var category = data.category || '-';
     var color = data.color || '-';
     var productUrl = (function(){
@@ -440,6 +447,7 @@ window.addEventListener('DOMContentLoaded', function(){
       data.name || '-',
       data.brand || '-',
       sellerDisplay,
+      storeDisplay,
       category,
       color,
       price,
@@ -458,7 +466,7 @@ window.addEventListener('DOMContentLoaded', function(){
     
     for(var i=0;i<cols.length;i++){
       var td=document.createElement('td');
-      if(i === 0 || i === 1 || i === 13 || i === 18){ // 0=link, 1=image, 13=warehouses, 18=status use innerHTML
+      if(i === 0 || i === 1 || i === 14 || i === 19){ // 0=link, 1=image, 14=warehouses, 19=status use innerHTML
         td.innerHTML = cols[i];
       } else {
         td.textContent = cols[i];
@@ -631,21 +639,33 @@ async function fetchLegalEntityName(sellerId) {
       // Ищем полное название юрлица в popup с реквизитами
       // Паттерн: "Общество с ограниченной ответственностью ...", "Индивидуальный предприниматель ..."
       const patterns = [
-        /(?:Общество с ограниченной ответственностью|ООО)\s+[«"]?([А-ЯЁа-яёA-Za-z0-9\s\-\.]+?)[«"]?(?=\s*<?(?:ИНН|ОГРН|КПП|Номер|117105|\d{10,}))/i,
-        /(?:Индивидуальный предприниматель|ИП)\s+([А-ЯЁа-яё\s]+?)(?=\s*<?(?:ИНН|ОГРН|КПП|Номер|\d{10,}))/i,
-        /(?:Акционерное общество|АО)\s+[«"]?([А-ЯЁа-яёA-Za-z0-9\s\-\.]+?)[«"]?(?=\s*<?(?:ИНН|ОГРН|КПП|Номер|\d{10,}))/i
+        // ООО с любыми кавычками или без
+        /(?:Общество с ограниченной ответственностью|ООО)\s+[«"'"]?([А-ЯЁа-яёA-Za-z0-9\s\-\.]+?)[«"'"]?(?=\s*<?(?:ИНН|ОГРН|КПП|Номер|117105|\d{10,}))/i,
+        // ИП: ищем полное ФИО (Фамилия Имя Отчество)
+        /(?:Индивидуальный предприниматель|ИП)\s+([А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+)/i,
+        // ИП: короткий вариант если нет отчества
+        /(?:Индивидуальный предприниматель|ИП)\s+([А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+)(?=\s*<?(?:ИНН|ОГРН))/i,
+        // АО
+        /(?:Акционерное общество|АО)\s+[«"'"]?([А-ЯЁа-яёA-Za-z0-9\s\-\.]+?)[«"'"]?(?=\s*<?(?:ИНН|ОГРН|КПП|Номер|\d{10,}))/i
       ];
       
       for (const pattern of patterns) {
         const match = html.match(pattern);
         if (match && match[1]) {
-          const fullName = match[1].trim();
+          let fullName = match[1].trim();
           // Убираем лишние пробелы и спецсимволы
-          const cleaned = fullName.replace(/\s+/g, ' ').replace(/[<>]/g, '');
-          console.log(`✓ Найдено юрлицо для ${id} (${domain}): ${cleaned}`);
+          fullName = fullName.replace(/\s+/g, ' ').replace(/[<>]/g, '');
+          
+          // Если это ИП и нет префикса, добавляем
+          let result = fullName;
+          if (pattern.source.includes('Индивидуальный') && !fullName.startsWith('Индивидуальный')) {
+            result = 'Индивидуальный предприниматель ' + fullName;
+          }
+          
+          console.log(`✓ Найдено юрлицо для ${id} (${domain}): ${result}`);
           // Сохраняем в кэш
-          LEGAL_NAMES_CACHE.set(id, cleaned);
-          return cleaned;
+          LEGAL_NAMES_CACHE.set(id, result);
+          return result;
         }
       }
       
@@ -1087,22 +1107,24 @@ app.get('/wb-max', requireAuth, async (req, res) => {
   const brand = product.brand || product.selling?.brand_name || '';
   const sellerId = product.sellerId || product.supplierId || '';
   
-  // Юридическое лицо продавца
-  let storeName = product.supplier || ''; // fallback: краткое торговое название из API
+  // Получаем данные продавца
+  let sellerName = ''; // Полное юридическое лицо
+  let storeName = product.supplier || ''; // Краткое торговое название (магазин)
   
   if (sellerId) {
     // 1. Проверяем статическую базу
     if (SELLERS_DB[String(sellerId)]) {
-      storeName = SELLERS_DB[String(sellerId)].legalName || storeName;
-      console.log(`✓ Из базы для ${sellerId}: ${storeName}`);
+      sellerName = SELLERS_DB[String(sellerId)].legalName || '';
+      storeName = SELLERS_DB[String(sellerId)].store || storeName;
+      console.log(`✓ Из базы для ${sellerId}: ${sellerName}`);
     } else {
       // 2. Парсим со страницы продавца на WB
       const legalName = await fetchLegalEntityName(sellerId);
       if (legalName) {
-        storeName = legalName;
-        console.log(`✓ Спарсено для ${sellerId}: ${storeName}`);
+        sellerName = legalName;
+        console.log(`✓ Спарсено для ${sellerId}: ${sellerName}`);
       } else {
-        console.log(`⚠ Для ${sellerId} используем краткое название: ${storeName}`);
+        console.log(`⚠ Для ${sellerId} используем только магазин: ${storeName}`);
       }
     }
   }
@@ -1186,6 +1208,7 @@ app.get('/wb-max', requireAuth, async (req, res) => {
     name,
     brand,
     sellerId,
+    sellerName,
     storeName,
     category,
     color,
@@ -1322,21 +1345,23 @@ app.get('/wb-max-csv', async (req, res) => {
     const url = domain === 'kg' ? `https://www.wildberries.kg/catalog/${nm}/detail.aspx` : domain === 'kz' ? `https://www.wildberries.kz/catalog/${nm}/detail.aspx` : `https://www.wildberries.ru/catalog/${nm}/detail.aspx`;
 
     const header = [
-      'nm','name','brand','sellerId','storeName','category','color','price','currency','destUsed','domain','source','rating','feedbacks','images','stocksTotalQty','warehouses','url'
+      'nm','name','brand','sellerId','sellerName','storeName','category','color','price','currency','destUsed','domain','source','rating','feedbacks','images','stocksTotalQty','warehouses','url'
     ];
     
-    // Юридическое лицо продавца
-    let storeName = safeGet(product, 'supplier', '') || ''; // fallback: краткое название из API
+    // Получаем данные продавца
+    let sellerName = ''; // Полное юридическое лицо
+    let storeName = safeGet(product, 'supplier', '') || ''; // Краткое торговое название
     
     if (sellerId) {
       // 1. Проверяем статическую базу
       if (SELLERS_DB[String(sellerId)]) {
-        storeName = SELLERS_DB[String(sellerId)].legalName || storeName;
+        sellerName = SELLERS_DB[String(sellerId)].legalName || '';
+        storeName = SELLERS_DB[String(sellerId)].store || storeName;
       } else {
         // 2. Парсим со страницы продавца на WB
         const legalName = await fetchLegalEntityName(sellerId);
         if (legalName) {
-          storeName = legalName;
+          sellerName = legalName;
         }
       }
     }
@@ -1385,6 +1410,7 @@ app.get('/wb-max-csv', async (req, res) => {
       String(name).replace(/"/g,'""'),
       String(brand).replace(/"/g,'""'),
       String(sellerId),
+      String(sellerName).replace(/"/g,'""'),
       String(storeName).replace(/"/g,'""'),
       String(category).replace(/"/g,'""'),
       String(color).replace(/"/g,'""'),
@@ -1401,7 +1427,7 @@ app.get('/wb-max-csv', async (req, res) => {
       url
     ];
 
-    const csv = `${header.join(',')}\n"${row[0]}","${row[1]}","${row[2]}","${row[3]}","${row[4]}","${row[5]}","${row[6]}","${row[7]}","${row[8]}","${row[9]}","${row[10]}","${row[11]}","${row[12]}","${row[13]}","${row[14]}","${row[15]}","${row[16]}","${row[17]}"`;
+    const csv = `${header.join(',')}\n"${row[0]}","${row[1]}","${row[2]}","${row[3]}","${row[4]}","${row[5]}","${row[6]}","${row[7]}","${row[8]}","${row[9]}","${row[10]}","${row[11]}","${row[12]}","${row[13]}","${row[14]}","${row[15]}","${row[16]}","${row[17]}","${row[18]}"`;
     res.status(200).type('text/csv').send(csv);
   } catch (e) {
     res.status(500).type('text/csv').send('error,message\n500,Internal error');
