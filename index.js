@@ -170,8 +170,8 @@ app.get('/api/logout', (req, res) => {
   res.redirect('/login');
 });
 
-// Главная страница (только для авторизованных)
-app.get('/', requireAuth, (req, res) => {
+// Главная страница (БЕЗ авторизации - публичный доступ)
+app.get('/', (req, res) => {
   res.send(`<!doctype html>
 <html><head><meta charset="utf-8" />
 <title>WB Helper MAX</title>
@@ -239,7 +239,7 @@ tbody tr:hover{background:#f8f9fa}
   <button id="fetch" class="success">📊 Получить данные</button>
   <button id="open" class="secondary">🔗 Открыть товар</button>
   <button id="clear" class="danger">🗑️ Очистить таблицу</button>
-  <button onclick="localStorage.removeItem('authToken');window.location.href='/login'" style="background:#636e72">🚪 Выход</button>
+
 </div>
 <div class="table-wrapper">
   <table id="dataTable">
@@ -271,13 +271,6 @@ tbody tr:hover{background:#f8f9fa}
 </div>
 <script>
 window.addEventListener('DOMContentLoaded', function(){
-  // Проверяем авторизацию
-  var token = localStorage.getItem('authToken');
-  if (!token) {
-    window.location.href = '/login';
-    return;
-  }
-  
   var nmEl = document.getElementById('nm');
   var domainEl = document.getElementById('domain');
   var destEl = document.getElementById('dest');
@@ -304,11 +297,7 @@ window.addEventListener('DOMContentLoaded', function(){
     btnFetch.disabled = true;
     btnFetch.textContent = '⏳ Загрузка...';
     
-    fetch(url, {
-      headers: {
-        'Authorization': 'Bearer ' + token
-      }
-    })
+    fetch(url)
       .then(function(r){return r.json();})
       .then(function(data){
         addRow(data);
@@ -751,7 +740,7 @@ async function fetchLegalEntityName(sellerId) {
 }
 
 // GET /wb-price?nm=АРТИКУЛ
-app.get('/wb-price', requireAuth, async (req, res) => {
+app.get('/wb-price', async (req, res) => {
   const nm = req.query.nm;
   if (!nm) return res.status(400).json({ error: 'nm (артикул) обязателен' });
 
@@ -902,7 +891,7 @@ app.listen(PORT, () => {
 });
 
 // Дополнительный endpoint для просмотра сырого ответа
-app.get('/wb-raw', requireAuth, async (req, res) => {
+app.get('/wb-raw', async (req, res) => {
   const nm = req.query.nm;
   if (!nm) return res.status(400).json({ error: 'nm обязателен' });
   try {
@@ -1056,7 +1045,7 @@ function summarizeStocks(product) {
 }
 
 // ===== Endpoint для максимальных данных (JSON) =====
-app.get('/wb-max', requireAuth, async (req, res) => {
+app.get('/wb-max', async (req, res) => {
   const nm = String(req.query.nm || '').trim();
   const dest = String(req.query.dest || '').trim();
   const domain = String(req.query.domain || 'ru').trim();
