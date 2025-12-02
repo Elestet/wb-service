@@ -596,7 +596,7 @@ async function fetchFromHtml(nm) {
   return null;
 }
 
-// Получить полное название юридического лица со страницы продавца
+// Получить полное название юридического лица через API WB
 async function fetchLegalEntityName(sellerId) {
   if (!sellerId) return '';
   const id = String(sellerId).trim();
@@ -608,87 +608,109 @@ async function fetchLegalEntityName(sellerId) {
     return cached;
   }
   
-  // Пробуем разные домены
+  // МЕТОД 1: Через внутренний API профиля продавца (JSON endpoint)
+  const apiEndpoints = [
+    `https://www.wildberries.ru/webapi/seller/data/short?supplierId=${id}`,
+    `https://www.wildberries.kg/webapi/seller/data/short?supplierId=${id}`,
+    `https://www.wildberries.kz/webapi/seller/data/short?supplierId=${id}`
+  ];
+  
+  for (const apiUrl of apiEndpoints) {
+    try {
+      const resp = await axios.get(apiUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept': 'application/json',
+          'Referer': `https://www.wildberries.ru/seller/${id}`
+        },
+        timeout: 8000
+      });
+      
+      // Может быть в data.legalName или data.name или data.supplierName
+      const data = resp.data || {};
+      const legalName = data.legalName || data.fullName || data.organizationName || data.name || data.supplierName;
+      
+      if (legalName && String(legalName).length > 2) {
+        const name = String(legalName).trim();
+        console.log(`✓ Получено из WebAPI для ${id}: ${name}`);
+        LEGAL_NAMES_CACHE.set(id, name);
+        return name;
+      }
+    } catch (err) {
+      // Пробуем следующий endpoint
+      continue;
+    }
+  }
+  
+  // МЕТОД 2: Пробуем card API (иногда там есть seller info)
+  try {
+    const cardUrl = `https://card.wb.ru/cards/v2/detail?appType=1&curr=rub&dest=-1257786&nm=${id}`;
+    const resp = await axios.get(cardUrl, {
+      headers: {
+        'User-Agent': 'WildberriesApp/1.0',
+        'Accept': 'application/json'
+      },
+      timeout: 8000
+    });
+    
+    const products = resp?.data?.data?.products || [];
+    if (products.length > 0 && products[0].supplierName) {
+      const name = String(products[0].supplierName).trim();
+      console.log(`✓ Получено из card API для ${id}: ${name}`);
+      LEGAL_NAMES_CACHE.set(id, name);
+      return name;
+    }
+  } catch (err) {
+    console.log(`Card API не вернул данные для ${id}: ${err.message}`);
+  }
+  
+  // МЕТОД 3: HTML парсинг (последний резерв, обычно блокируется)
   const domains = ['wildberries.kg', 'wildberries.kz', 'wildberries.ru'];
   
   for (const domain of domains) {
     const url = `https://www.${domain}/seller/${id}`;
     
-    // Добавляем случайную задержку 0.5-2 сек между запросами к разным доменам
-    await delay(500 + Math.random() * 1500);
+    await delay(300); // короткая задержка
     
     try {
       const resp = await axios.get(url, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.8',
-          'Accept-Encoding': 'gzip, deflate, br',
-          'Connection': 'keep-alive',
-          'Upgrade-Insecure-Requests': '1',
-          'Sec-Fetch-Dest': 'document',
-          'Sec-Fetch-Mode': 'navigate',
-          'Sec-Fetch-Site': 'none',
-          'Cache-Control': 'max-age=0'
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'ru-RU,ru;q=0.9'
         },
-        timeout: 15000,
-        maxRedirects: 5
+        timeout: 8000,
+        maxRedirects: 3
       });
       const html = String(resp.data || '');
     
-      // Ищем полное название юрлица в popup с реквизитами
-      // Паттерн: "Общество с ограниченной ответственностью ...", "Индивидуальный предприниматель ..."
       const patterns = [
-        // ООО с любыми кавычками или без
-        /(?:Общество с ограниченной ответственностью|ООО)\s+[«"'"]?([А-ЯЁа-яёA-Za-z0-9\s\-\.]+?)[«"'"]?(?=\s*<?(?:ИНН|ОГРН|КПП|Номер|117105|\d{10,}))/i,
-        // ИП: ищем полное ФИО (Фамилия Имя Отчество)
+        /(?:Общество с ограниченной ответственностью|ООО)\s+[«"'"]?([А-ЯЁа-яёA-Za-z0-9\s\-\.]+?)[«"'"]?(?=\s*<?(?:ИНН|ОГРН))/i,
         /(?:Индивидуальный предприниматель|ИП)\s+([А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+)/i,
-        // ИП: короткий вариант если нет отчества
-        /(?:Индивидуальный предприниматель|ИП)\s+([А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+)(?=\s*<?(?:ИНН|ОГРН))/i,
-        // АО
-        /(?:Акционерное общество|АО)\s+[«"'"]?([А-ЯЁа-яёA-Za-z0-9\s\-\.]+?)[«"'"]?(?=\s*<?(?:ИНН|ОГРН|КПП|Номер|\d{10,}))/i
+        /(?:Индивидуальный предприниматель|ИП)\s+([А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+)(?=\s*<?(?:ИНН))/i,
+        /(?:Акционерное общество|АО)\s+[«"'"]?([А-ЯЁа-яёA-Za-z0-9\s\-\.]+?)[«"'"]?(?=\s*<?(?:ИНН))/i
       ];
       
       for (const pattern of patterns) {
         const match = html.match(pattern);
         if (match && match[1]) {
-          let fullName = match[1].trim();
-          // Убираем лишние пробелы и спецсимволы
-          fullName = fullName.replace(/\s+/g, ' ').replace(/[<>]/g, '');
+          let fullName = match[1].trim().replace(/\s+/g, ' ').replace(/[<>]/g, '');
           
-          // Если это ИП и нет префикса, добавляем
-          let result = fullName;
           if (pattern.source.includes('Индивидуальный') && !fullName.startsWith('Индивидуальный')) {
-            result = 'Индивидуальный предприниматель ' + fullName;
+            fullName = 'Индивидуальный предприниматель ' + fullName;
           }
           
-          console.log(`✓ Найдено юрлицо для ${id} (${domain}): ${result}`);
-          // Сохраняем в кэш
-          LEGAL_NAMES_CACHE.set(id, result);
-          return result;
+          console.log(`✓ Спарсено HTML для ${id} (${domain}): ${fullName}`);
+          LEGAL_NAMES_CACHE.set(id, fullName);
+          return fullName;
         }
       }
-      
-      // Если не нашли в реквизитах, пытаемся найти в title (для ИП)
-      const ipMatch = html.match(/<title>\s*ИП\s+([А-ЯЁа-яё\s]+?)\s*[-–—]\s*Wildberries/i);
-      if (ipMatch && ipMatch[1]) {
-        const name = `Индивидуальный предприниматель ${ipMatch[1].trim()}`;
-        console.log(`✓ Найдено ИП для ${id} (${domain}): ${name}`);
-        // Сохраняем в кэш
-        LEGAL_NAMES_CACHE.set(id, name);
-        return name;
-      }
     } catch (err) {
-      // Логируем только если это не таймаут или сетевая ошибка
-      if (!err.code || (err.code !== 'ECONNABORTED' && err.code !== 'ETIMEDOUT')) {
-        console.log(`Не удалось загрузить ${domain}/seller/${id}: ${err.message}`);
-      }
-      continue; // пробуем следующий домен
+      continue;
     }
   }
   
   console.log(`✗ Не удалось получить юрлицо для продавца ${id}`);
-  // Сохраняем пустую строку в кэш чтобы не пытаться снова
   LEGAL_NAMES_CACHE.set(id, '');
   return '';
 }
