@@ -60,14 +60,26 @@ const randomDelay = (minSec, maxSec) => {
 
 // Middleware для проверки авторизации
 function requireAuth(req, res, next) {
-  console.log('Auth check:', { 
-    sessionID: req.sessionID, 
-    isAuthenticated: req.session?.isAuthenticated,
-    user: req.session?.user 
-  });
+  // Проверяем токен в заголовке Authorization
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    try {
+      const decoded = Buffer.from(token, 'base64').toString('utf-8');
+      const [login, password] = decoded.split(':');
+      if (login === ADMIN_LOGIN && password === ADMIN_PASSWORD) {
+        return next();
+      }
+    } catch (e) {
+      // Невалидный токен
+    }
+  }
+  
+  // Фоллбэк на старые сессии (для совместимости)
   if (req.session && req.session.isAuthenticated) {
     return next();
   }
+  
   res.redirect('/login');
 }
 
@@ -123,6 +135,8 @@ document.getElementById('loginForm').onsubmit = function(e) {
   .then(function(r){return r.json();})
   .then(function(data){
     if(data.success){
+      // Сохраняем токен в localStorage
+      localStorage.setItem('authToken', data.token);
       window.location.href = '/';
     } else {
       var err = document.getElementById('error');
@@ -142,22 +156,12 @@ document.getElementById('loginForm').onsubmit = function(e) {
 // API для входа
 app.post('/api/login', (req, res) => {
   const { login, password } = req.body;
-  console.log('Login attempt:', { login, hasPassword: !!password, session: req.sessionID });
   if (login === ADMIN_LOGIN && password === ADMIN_PASSWORD) {
-    req.session.isAuthenticated = true;
-    req.session.user = login;
-    req.session.save((err) => {
-      if (err) {
-        console.error('Session save error:', err);
-        return res.json({ success: false, message: 'Ошибка сохранения сессии' });
-      }
-      console.log('Login successful, session saved:', req.sessionID);
-      return res.json({ success: true });
-    });
-  } else {
-    console.log('Login failed: invalid credentials');
-    res.json({ success: false, message: 'Неверный логин или пароль' });
+    // Создаём простой токен (base64 от логина:пароля)
+    const token = Buffer.from(`${login}:${password}`).toString('base64');
+    return res.json({ success: true, token });
   }
+  res.json({ success: false, message: 'Неверный логин или пароль' });
 });
 
 // API для выхода
@@ -235,7 +239,7 @@ tbody tr:hover{background:#f8f9fa}
   <button id="fetch" class="success">📊 Получить данные</button>
   <button id="open" class="secondary">🔗 Открыть товар</button>
   <button id="clear" class="danger">🗑️ Очистить таблицу</button>
-  <button onclick="window.location.href='/api/logout'" style="background:#636e72">🚪 Выход</button>
+  <button onclick="localStorage.removeItem('authToken');window.location.href='/login'" style="background:#636e72">🚪 Выход</button>
 </div>
 <div class="table-wrapper">
   <table id="dataTable">
@@ -267,6 +271,13 @@ tbody tr:hover{background:#f8f9fa}
 </div>
 <script>
 window.addEventListener('DOMContentLoaded', function(){
+  // Проверяем авторизацию
+  var token = localStorage.getItem('authToken');
+  if (!token) {
+    window.location.href = '/login';
+    return;
+  }
+  
   var nmEl = document.getElementById('nm');
   var domainEl = document.getElementById('domain');
   var destEl = document.getElementById('dest');
@@ -293,7 +304,11 @@ window.addEventListener('DOMContentLoaded', function(){
     btnFetch.disabled = true;
     btnFetch.textContent = '⏳ Загрузка...';
     
-    fetch(url)
+    fetch(url, {
+      headers: {
+        'Authorization': 'Bearer ' + token
+      }
+    })
       .then(function(r){return r.json();})
       .then(function(data){
         addRow(data);
