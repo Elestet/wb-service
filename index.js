@@ -2,9 +2,24 @@ const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
 const session = require('express-session');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Загружаем базу юридических лиц продавцов
+let SELLERS_DB = {};
+try {
+  const dbPath = path.join(__dirname, 'sellers-db.json');
+  SELLERS_DB = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+  console.log(`Загружено ${Object.keys(SELLERS_DB).length} продавцов в базу`);
+} catch (err) {
+  console.warn('База продавцов не загружена:', err.message);
+}
+
+// Кэш для юридических лиц (чтобы не парсить одного продавца несколько раз)
+const LEGAL_NAMES_CACHE = new Map();
 
 app.use(cors());
 app.use(express.json());
@@ -209,9 +224,9 @@ tbody tr:hover{background:#f8f9fa}
       <th>Фото товара</th>
       <th>Название</th>
       <th>Бренд</th>
-      <th>ID продавца</th>
-      <th>Продавец (ФИО)</th>
-      <th>Магазин</th>
+      <th>Продавец (ID)</th>
+      <th>Категория</th>
+      <th>Цвет</th>
       <th>Цена</th>
       <th>Валюта</th>
       <th>Рейтинг</th>
@@ -402,8 +417,18 @@ window.addEventListener('DOMContentLoaded', function(){
     }
     
     var sellerId = data.sellerId || '-';
-    var sellerName = data.sellerName || '-';
-    var storeName = data.storeName || sellerName || '-';
+    var storeName = data.storeName || '-';
+    // Формируем строку: Название (ID)
+    var sellerDisplay = '-';
+    if (storeName !== '-' && sellerId !== '-') {
+      sellerDisplay = storeName + ' (' + sellerId + ')';
+    } else if (storeName !== '-') {
+      sellerDisplay = storeName;
+    } else if (sellerId !== '-') {
+      sellerDisplay = 'ID: ' + sellerId;
+    }
+    var category = data.category || '-';
+    var color = data.color || '-';
     var productUrl = (function(){
       var host = 'www.wildberries.kg';
       return 'https://' + host + '/catalog/' + (data.nm || '') + '/detail.aspx';
@@ -414,9 +439,9 @@ window.addEventListener('DOMContentLoaded', function(){
       mainImage,
       data.name || '-',
       data.brand || '-',
-      sellerId,
-      sellerName,
-      storeName,
+      sellerDisplay,
+      category,
+      color,
       price,
       currency,
       rating,
@@ -563,37 +588,89 @@ async function fetchFromHtml(nm) {
   return null;
 }
 
-// Получить ФИО продавца со страницы продавца (работает только для ИП)
-async function fetchSellerPersonName(sellerId) {
+// Получить полное название юридического лица со страницы продавца
+async function fetchLegalEntityName(sellerId) {
   if (!sellerId) return '';
   const id = String(sellerId).trim();
-  const url = `https://www.wildberries.ru/seller/${id}`;
-  try {
-    const resp = await axios.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0',
-        'Accept': 'text/html'
-      },
-      timeout: 5000
-    });
-    const html = String(resp.data || '');
-    
-    // Для ИП в title обычно: "ИП Иванов Иван Иванович – Wildberries"
-    const ipMatch = html.match(/<title>\s*ИП\s+([А-ЯЁа-яё\s]+?)\s*[-–—]\s*Wildberries/i);
-    if (ipMatch && ipMatch[1]) {
-      return ipMatch[1].trim();
-    }
-    
-    // Альтернативный вариант - ищем в meta og:title
-    const ogMatch = html.match(/<meta[^>]*property="og:title"[^>]*content="ИП\s+([А-ЯЁа-яё\s]+?)"/i);
-    if (ogMatch && ogMatch[1]) {
-      return ogMatch[1].trim();
-    }
-    
-    return '';
-  } catch (_) {
-    return '';
+  
+  // Проверяем кэш
+  if (LEGAL_NAMES_CACHE.has(id)) {
+    const cached = LEGAL_NAMES_CACHE.get(id);
+    console.log(`✓ Из кэша для ${id}: ${cached}`);
+    return cached;
   }
+  
+  // Пробуем разные домены
+  const domains = ['wildberries.kg', 'wildberries.kz', 'wildberries.ru'];
+  
+  for (const domain of domains) {
+    const url = `https://www.${domain}/seller/${id}`;
+    
+    // Добавляем случайную задержку 0.5-2 сек между запросами к разным доменам
+    await delay(500 + Math.random() * 1500);
+    
+    try {
+      const resp = await axios.get(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.8',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Connection': 'keep-alive',
+          'Upgrade-Insecure-Requests': '1',
+          'Sec-Fetch-Dest': 'document',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': 'none',
+          'Cache-Control': 'max-age=0'
+        },
+        timeout: 15000,
+        maxRedirects: 5
+      });
+      const html = String(resp.data || '');
+    
+      // Ищем полное название юрлица в popup с реквизитами
+      // Паттерн: "Общество с ограниченной ответственностью ...", "Индивидуальный предприниматель ..."
+      const patterns = [
+        /(?:Общество с ограниченной ответственностью|ООО)\s+[«"]?([А-ЯЁа-яёA-Za-z0-9\s\-\.]+?)[«"]?(?=\s*<?(?:ИНН|ОГРН|КПП|Номер|117105|\d{10,}))/i,
+        /(?:Индивидуальный предприниматель|ИП)\s+([А-ЯЁа-яё\s]+?)(?=\s*<?(?:ИНН|ОГРН|КПП|Номер|\d{10,}))/i,
+        /(?:Акционерное общество|АО)\s+[«"]?([А-ЯЁа-яёA-Za-z0-9\s\-\.]+?)[«"]?(?=\s*<?(?:ИНН|ОГРН|КПП|Номер|\d{10,}))/i
+      ];
+      
+      for (const pattern of patterns) {
+        const match = html.match(pattern);
+        if (match && match[1]) {
+          const fullName = match[1].trim();
+          // Убираем лишние пробелы и спецсимволы
+          const cleaned = fullName.replace(/\s+/g, ' ').replace(/[<>]/g, '');
+          console.log(`✓ Найдено юрлицо для ${id} (${domain}): ${cleaned}`);
+          // Сохраняем в кэш
+          LEGAL_NAMES_CACHE.set(id, cleaned);
+          return cleaned;
+        }
+      }
+      
+      // Если не нашли в реквизитах, пытаемся найти в title (для ИП)
+      const ipMatch = html.match(/<title>\s*ИП\s+([А-ЯЁа-яё\s]+?)\s*[-–—]\s*Wildberries/i);
+      if (ipMatch && ipMatch[1]) {
+        const name = `Индивидуальный предприниматель ${ipMatch[1].trim()}`;
+        console.log(`✓ Найдено ИП для ${id} (${domain}): ${name}`);
+        // Сохраняем в кэш
+        LEGAL_NAMES_CACHE.set(id, name);
+        return name;
+      }
+    } catch (err) {
+      // Логируем только если это не таймаут или сетевая ошибка
+      if (!err.code || (err.code !== 'ECONNABORTED' && err.code !== 'ETIMEDOUT')) {
+        console.log(`Не удалось загрузить ${domain}/seller/${id}: ${err.message}`);
+      }
+      continue; // пробуем следующий домен
+    }
+  }
+  
+  console.log(`✗ Не удалось получить юрлицо для продавца ${id}`);
+  // Сохраняем пустую строку в кэш чтобы не пытаться снова
+  LEGAL_NAMES_CACHE.set(id, '');
+  return '';
 }
 
 // GET /wb-price?nm=АРТИКУЛ
@@ -1010,14 +1087,65 @@ app.get('/wb-max', requireAuth, async (req, res) => {
   const brand = product.brand || product.selling?.brand_name || '';
   const sellerId = product.sellerId || product.supplierId || '';
   
-  // Название магазина (юрлицо/бренд) - всегда из API
-  let storeName = product.supplier || '';
+  // Юридическое лицо продавца
+  let storeName = product.supplier || ''; // fallback: краткое торговое название из API
   
-  // ФИО продавца (только для ИП) - пытаемся получить со страницы продавца
-  let sellerName = '';
-  if (sellerId && storeName && /ИП|Предприниматель/i.test(storeName)) {
-    // Только если это ИП - пробуем парсить ФИО
-    sellerName = await fetchSellerPersonName(sellerId);
+  if (sellerId) {
+    // 1. Проверяем статическую базу
+    if (SELLERS_DB[String(sellerId)]) {
+      storeName = SELLERS_DB[String(sellerId)].legalName || storeName;
+      console.log(`✓ Из базы для ${sellerId}: ${storeName}`);
+    } else {
+      // 2. Парсим со страницы продавца на WB
+      const legalName = await fetchLegalEntityName(sellerId);
+      if (legalName) {
+        storeName = legalName;
+        console.log(`✓ Спарсено для ${sellerId}: ${storeName}`);
+      } else {
+        console.log(`⚠ Для ${sellerId} используем краткое название: ${storeName}`);
+      }
+    }
+  }
+  
+  // Категория товара
+  let category = '';
+  if (product.subjectName) {
+    category = product.subjectName;
+  } else if (product.subjectId) {
+    // Маппинг популярных subjectId на названия категорий
+    const subjectMap = {
+      // Одежда женская
+      128: 'Блузки и рубашки', 129: 'Брюки', 130: 'Верхняя одежда', 131: 'Джемперы, свитеры, кардиганы',
+      132: 'Джинсы', 133: 'Комбинезоны', 134: 'Костюмы', 135: 'Платья', 136: 'Юбки', 143: 'Футболки и топы',
+      // Одежда мужская
+      1652: 'Футболки', 1653: 'Джинсы', 1654: 'Рубашки', 1655: 'Брюки',
+      // Белье и носки
+      163: 'Носки', 164: 'Колготки, чулки, гольфы', 6397: 'Нижнее белье',
+      // Спорт
+      177: 'Спортивные костюмы', 299: 'Спортивное питание', 685: 'Спортивные товары',
+      // Обувь
+      306: 'Кроссовки и кеды', 311: 'Ботинки', 312: 'Сапоги', 1851: 'Туфли', 2094: 'Сандалии',
+      // Электроника
+      566: 'Смартфоны', 851: 'Ноутбуки', 1051: 'Планшеты', 2675: 'Чехлы для телефонов',
+      1652: 'Наушники', 2389: 'Умные часы', 3902: 'Зарядные устройства',
+      // Дом и интерьер
+      1619: 'Постельное белье', 2553: 'Посуда', 4604: 'Текстиль для дома', 5503: 'Мебель',
+      // Красота и здоровье
+      1346: 'Помада', 1645: 'Крем для лица', 2398: 'Парфюмерия', 3618: 'Средства для волос',
+      // Детям
+      5508: 'Игрушки', 4198: 'Товары для детей', 1106: 'Детская одежда',
+      // Аксессуары
+      1587: 'Сумки', 1680: 'Рюкзаки', 2674: 'Кошельки', 1456: 'Ремни',
+      // Автотовары
+      1142: 'Автотовары', 4604: 'Аксессуары для авто'
+    };
+    category = subjectMap[product.subjectId] || `Категория ${product.subjectId}`;
+  }
+  
+  // Цвет товара - берем первый цвет (основной для данного артикула)
+  let color = '';
+  if (Array.isArray(product.colors) && product.colors.length > 0) {
+    color = product.colors[0].name || '';
   }
   
   const rating = product.rating || 0;
@@ -1058,9 +1186,9 @@ app.get('/wb-max', requireAuth, async (req, res) => {
     name,
     brand,
     sellerId,
-    sellerName,
     storeName,
-    sellerCombined: storeName ? `${storeName} / ${sellerId}` : sellerId,
+    category,
+    color,
     price: priceU > 0 ? priceU / 100 : 0,
     currency,
     rating,
@@ -1194,22 +1322,72 @@ app.get('/wb-max-csv', async (req, res) => {
     const url = domain === 'kg' ? `https://www.wildberries.kg/catalog/${nm}/detail.aspx` : domain === 'kz' ? `https://www.wildberries.kz/catalog/${nm}/detail.aspx` : `https://www.wildberries.ru/catalog/${nm}/detail.aspx`;
 
     const header = [
-      'nm','name','brand','sellerId','sellerName','storeName','price','currency','destUsed','domain','source','rating','feedbacks','images','stocksTotalQty','warehouses','url'
+      'nm','name','brand','sellerId','storeName','category','color','price','currency','destUsed','domain','source','rating','feedbacks','images','stocksTotalQty','warehouses','url'
     ];
-    // Название магазина из API
-    let storeName = safeGet(product, 'supplier', '') || '';
     
-    // ФИО продавца (только для ИП) - опционально для CSV
-    let sellerName = '';
-    // В CSV не парсим ФИО для скорости - можно включить при необходимости
+    // Юридическое лицо продавца
+    let storeName = safeGet(product, 'supplier', '') || ''; // fallback: краткое название из API
+    
+    if (sellerId) {
+      // 1. Проверяем статическую базу
+      if (SELLERS_DB[String(sellerId)]) {
+        storeName = SELLERS_DB[String(sellerId)].legalName || storeName;
+      } else {
+        // 2. Парсим со страницы продавца на WB
+        const legalName = await fetchLegalEntityName(sellerId);
+        if (legalName) {
+          storeName = legalName;
+        }
+      }
+    }
+    
+    // Категория
+    let category = '';
+    if (product && product.subjectName) {
+      category = product.subjectName;
+    } else if (product && product.subjectId) {
+      const subjectMap = {
+        // Одежда
+        128: 'Блузки и рубашки', 129: 'Брюки', 130: 'Верхняя одежда', 131: 'Джемперы, свитера, кардиганы',
+        132: 'Джинсы', 133: 'Комбинезоны', 134: 'Костюмы', 135: 'Платья', 136: 'Юбки', 143: 'Футболки и топы',
+        1652: 'Футболки', 1653: 'Джинсы', 1654: 'Рубашки', 1655: 'Брюки',
+        // Белье и носки
+        163: 'Носки', 164: 'Колготки, чулки, гольфы', 6397: 'Нижнее белье',
+        // Спорт
+        177: 'Спортивные костюмы', 299: 'Спортивное питание', 685: 'Спортивные товары',
+        // Обувь
+        306: 'Кроссовки и кеды', 311: 'Ботинки', 312: 'Сапоги', 1851: 'Туфли', 2094: 'Сандалии',
+        // Электроника
+        566: 'Смартфоны', 851: 'Ноутбуки', 1051: 'Планшеты', 2675: 'Чехлы для телефонов',
+        2389: 'Умные часы', 3902: 'Зарядные устройства',
+        // Дом
+        1619: 'Постельное белье', 2553: 'Посуда', 4604: 'Текстиль для дома', 5503: 'Мебель',
+        // Красота
+        1346: 'Помада', 1645: 'Крем для лица', 2398: 'Парфюмерия', 3618: 'Средства для волос',
+        // Детям
+        5508: 'Игрушки', 4198: 'Товары для детей', 1106: 'Детская одежда',
+        // Аксессуары
+        1587: 'Сумки', 1680: 'Рюкзаки', 2674: 'Кошельки', 1456: 'Ремни',
+        // Авто
+        1142: 'Автотовары'
+      };
+      category = subjectMap[product.subjectId] || `Категория ${product.subjectId}`;
+    }
+    
+    // Цвет - берем первый цвет
+    let color = '';
+    if (product && Array.isArray(product.colors) && product.colors.length > 0) {
+      color = product.colors[0].name || '';
+    }
     
     const row = [
       nm,
       String(name).replace(/"/g,'""'),
       String(brand).replace(/"/g,'""'),
       String(sellerId),
-      String(sellerName).replace(/"/g,'""'),
       String(storeName).replace(/"/g,'""'),
+      String(category).replace(/"/g,'""'),
+      String(color).replace(/"/g,'""'),
       String(price),
       currency,
       String(destUsed),
@@ -1223,7 +1401,7 @@ app.get('/wb-max-csv', async (req, res) => {
       url
     ];
 
-    const csv = `${header.join(',')}\n"${row[0]}","${row[1]}","${row[2]}","${row[3]}","${row[4]}","${row[5]}","${row[6]}","${row[7]}","${row[8]}","${row[9]}","${row[10]}","${row[11]}","${row[12]}","${row[13]}","${row[14]}","${row[15]}","${row[16]}"`;
+    const csv = `${header.join(',')}\n"${row[0]}","${row[1]}","${row[2]}","${row[3]}","${row[4]}","${row[5]}","${row[6]}","${row[7]}","${row[8]}","${row[9]}","${row[10]}","${row[11]}","${row[12]}","${row[13]}","${row[14]}","${row[15]}","${row[16]}","${row[17]}"`;
     res.status(200).type('text/csv').send(csv);
   } catch (e) {
     res.status(500).type('text/csv').send('error,message\n500,Internal error');

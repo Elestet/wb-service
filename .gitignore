@@ -1,4 +1,7 @@
-node_modules/
-.env
-npm-debug.log
-.DS_Store
+# Temporary files
+cookies.txt
+*.log
+server.log
+
+# Test files  
+test.html
