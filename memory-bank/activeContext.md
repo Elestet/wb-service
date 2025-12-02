@@ -1,24 +1,31 @@
 # Active Context
 
 Current Focus:
-- Разделение продавца: отдельные колонки `ID продавца` и `Продавец (ФИО)` в UI.
+- Получение названия магазина по артикулу товара.
+- Критическая оптимизация производительности: устранение медленных запросов.
+- Цена теперь извлекается быстро и корректно.
 - Склады: показывать названия складов и количество в формате `Название — N шт`.
-- Модель: колонка `Модель` (FBO/FBS) рядом со складами.
-- Ссылка: артикул кликабелен и ведёт на `wildberries.kg`.
 
-Recent Changes:
-- Reverted env-based creds, key, and caching to keep public CSV simple.
-- Refactored `/wb-price-csv` to direct product fetch (v2→v1→basket→html) returning `price,name`.
-- Added `fetchSellerName(sellerId)` parsing seller page HTML.
-- UI: продавец разделён на две колонки.
-- UI: колонка `Склады` теперь `Название — N шт` (данные из `sizes[].stocks`), ID можно показать в подсказке.
-- UI: добавлена колонка `Модель` (FBO/FBS) по набору `wh` (фулфилмент → FBO, иначе FBS).
-- UI: артикул стал ссылкой на KG.
+Recent Changes (Dec 2, 2025):
+- **CRITICAL FIX**: Удалён медленный `fetchStoreNameFromProductPage` который делал 3+ HTTP-запроса
+- **CRITICAL FIX**: Упрощён `fetchSellerName` - таймаут снижен до 5 сек, убраны избыточные regex
+- **CRITICAL FIX**: Упрощён `extractPrice` - убраны дублирующиеся проверки, оставлены только рабочие поля
+- **CRITICAL FIX**: Удалено дублирование функции `summarizeStocks` (была определена дважды)
+- **CRITICAL FIX**: Добавлены недостающие функции `safeGet` и `currencyByDomain` в wb-max-csv
+- **UI FIX**: Исправлена проверка цены - теперь `price !== null && price > 0` вместо `typeof price === 'number'`
+- **UI FIX**: Исправлены индексы innerHTML - правильно отображаются фото, склады и статус
+- **UI FIX**: Товары без остатков показывают "нет в наличии" вместо "0.00"
+- **CRITICAL FIX**: Название магазина теперь берётся из `product.supplier` в API v2 (не требует парсинга!)
+- **NEW FEATURE**: В `/wb-max` возвращается `storeName` и `sellerName` (оба из `product.supplier`)
+- **NEW FEATURE**: CSV endpoint `/wb-max-csv` включает колонку `storeName`
+- **OPTIMIZATION**: Удалены медленные функции `fetchStoreName` и `fetchSellerName` - больше не нужны
+- Результат: загрузка **~1-6 сек**, название магазина всегда доступно из API
+- UI: продавец разделён на две колонки, артикул — ссылка на KG
+- UI: колонка `Склады` показывает `Название — N шт`, модель FBO/FBS
 
 Next Steps:
-- Расширять словарь `wh → название` по наблюдениям для совпадения с WB.
-- Добавить прозрачность источника остатков: тултип с сырьём `sizes[].stocks`.
-- История замеров остатков для динамики.
+- Добавить кэширование часто запрашиваемых товаров (опционально)
+- Расширять словарь `wh → название` по наблюдениям
 
 Decisions:
 - Сохранять `/wb-price-csv` публичным и минимальным.

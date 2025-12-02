@@ -211,6 +211,7 @@ tbody tr:hover{background:#f8f9fa}
       <th>Бренд</th>
       <th>ID продавца</th>
       <th>Продавец (ФИО)</th>
+      <th>Магазин</th>
       <th>Цена</th>
       <th>Валюта</th>
       <th>Рейтинг</th>
@@ -282,7 +283,16 @@ window.addEventListener('DOMContentLoaded', function(){
     var timeStr=new Date().toLocaleTimeString();
     
     var status = data.error ? '<span class="status-error">'+data.error+'</span>' : '<span class="status-ok">OK (успешно)</span>';
-    var price = data.error ? '-' : (typeof data.price==='number' ? data.price.toFixed(2) : '-');
+    var price = '-';
+    if (!data.error) {
+      if (data.price !== undefined && data.price !== null && data.price > 0) {
+        price = data.price.toFixed(2);
+      } else if (data.stocksQty === 0 || (data.warehouses && data.warehouses.length === 0)) {
+        price = 'нет в наличии';
+      } else {
+        price = '0.00';
+      }
+    }
     var rating = (data.rating || 0) + ' ' + (data.rating ? '(из 5)' : '');
     var feedbacks = (data.feedbacks || 0) + ' ' + (data.feedbacks ? '(шт)' : '');
     var images = (data.images || 0) + ' ' + (data.images ? '(фото)' : '');
@@ -393,6 +403,7 @@ window.addEventListener('DOMContentLoaded', function(){
     
     var sellerId = data.sellerId || '-';
     var sellerName = data.sellerName || '-';
+    var storeName = data.storeName || sellerName || '-';
     var productUrl = (function(){
       var host = 'www.wildberries.kg';
       return 'https://' + host + '/catalog/' + (data.nm || '') + '/detail.aspx';
@@ -405,6 +416,7 @@ window.addEventListener('DOMContentLoaded', function(){
       data.brand || '-',
       sellerId,
       sellerName,
+      storeName,
       price,
       currency,
       rating,
@@ -421,7 +433,7 @@ window.addEventListener('DOMContentLoaded', function(){
     
     for(var i=0;i<cols.length;i++){
       var td=document.createElement('td');
-      if(i === 0 || i === 1 || i === 12 || i === 13 || i === 17){ // link, image, warehouses, model (text), status use innerHTML for rich fields
+      if(i === 0 || i === 1 || i === 13 || i === 18){ // 0=link, 1=image, 13=warehouses, 18=status use innerHTML
         td.innerHTML = cols[i];
       } else {
         td.textContent = cols[i];
@@ -437,25 +449,18 @@ window.addEventListener('DOMContentLoaded', function(){
 // Хелпер извлечения цены из объекта товара
 function extractPrice(product) {
   const candidates = [];
-  ['salePriceU','clientSalePriceU','basicPriceU','priceU','fullPriceU'].forEach(k => {
+  // Прямые поля продукта
+  ['salePriceU','clientSalePriceU','basicPriceU','priceU'].forEach(k => {
     if (typeof product[k] === 'number' && product[k] > 0) candidates.push(product[k]);
   });
-  if (product.extended) {
-    ['clientPriceU','basicPriceU','salePriceU','priceU'].forEach(k => {
-      if (typeof product.extended[k] === 'number' && product.extended[k] > 0) candidates.push(product.extended[k]);
-    });
-  }
+  // Цены в sizes (v2 формат)
   if (Array.isArray(product.sizes)) {
     for (const s of product.sizes) {
       const p = s && s.price;
       if (p) {
-        // v2 формат: price имеет поля basic, product, total
-        ['salePriceU','clientPriceU','basicPriceU','priceU','fullPriceU','basic','product','total'].forEach(k => {
+        ['basic','product','total'].forEach(k => {
           if (typeof p[k] === 'number' && p[k] > 0) candidates.push(p[k]);
         });
-        if (typeof p.basic === 'number' && p.basic > 0) candidates.push(p.basic);
-        if (typeof p.product === 'number' && p.product > 0) candidates.push(p.product);
-        if (typeof p.total === 'number' && p.total > 0) candidates.push(p.total);
       }
     }
   }
@@ -556,56 +561,6 @@ async function fetchFromHtml(nm) {
     }
   }
   return null;
-}
-
-// Получить человекочитаемое имя продавца по его ID
-async function fetchSellerName(sellerId) {
-  if (!sellerId) return '';
-  const id = String(sellerId).trim();
-  const url = `https://www.wildberries.ru/seller/${id}`;
-  try {
-    const resp = await axios.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/119.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7'
-      },
-      timeout: 12000
-    });
-    const html = String(resp.data || '');
-    // Популярные места: <title>Имя продавца – Wildberries</title>
-    const t = html.match(/<title>\s*(.*?)\s*[-–]\s*Wildberries\s*<\/title>/i);
-    if (t && t[1]) {
-      return t[1].trim();
-    }
-    // Альтернативный блок профиля: <h1 class="seller-name">Имя</h1>
-    const h = html.match(/<h1[^>]*class=\"[^\"]*seller[^\"]*\"[^>]*>(.*?)<\/h1>/i);
-    if (h && h[1]) {
-      return h[1].replace(/<[^>]+>/g,'').trim();
-    }
-    // OpenGraph: <meta property="og:title" content="Имя продавца" />
-    const og = html.match(/<meta[^>]*property=\"og:title\"[^>]*content=\"([^\"]+)\"[^>]*>/i);
-    if (og && og[1]) {
-      return og[1].trim();
-    }
-    // JSON-LD: "@type":"Organization","name":"Имя"
-    const ldMatch = html.match(/\{[^}]*"@type"\s*:\s*"Organization"[^}]*\}/i);
-    if (ldMatch) {
-      try {
-        const obj = JSON.parse(ldMatch[0]);
-        if (obj && obj.name) return String(obj.name).trim();
-      } catch(_) {}
-    }
-    // Общий fallback: искать "Продавец" рядом с именем
-    const label = html.match(/Продавец[^:]*:\s*<[^>]*>\s*([^<]+)\s*<\//i);
-    if (label && label[1]) {
-      return label[1].trim();
-    }
-    // Если не нашли — вернём пустую строку
-    return '';
-  } catch (_) {
-    return '';
-  }
 }
 
 // GET /wb-price?nm=АРТИКУЛ
@@ -896,7 +851,7 @@ app.get('/wb-price-csv', async (req, res) => {
 function summarizeStocks(product) {
   const sizes = Array.isArray(product?.sizes) ? product.sizes : [];
   let totalQty = 0;
-  const perWh = new Map(); // wh -> qty sum
+  const perWh = new Map();
   for (const s of sizes) {
     const stocks = Array.isArray(s.stocks) ? s.stocks : [];
     for (const st of stocks) {
@@ -1021,11 +976,11 @@ app.get('/wb-max', requireAuth, async (req, res) => {
   const name = product.name || product.imt_name || '';
   const brand = product.brand || product.selling?.brand_name || '';
   const sellerId = product.sellerId || product.supplierId || '';
-  // Попробуем получить человекочитаемое имя продавца
-  let sellerName = product.selling?.supplierName || product.supplierName || '';
-  if (!sellerName && sellerId) {
-    sellerName = await fetchSellerName(sellerId);
-  }
+  
+  // Получаем название магазина/продавца из API
+  let storeName = product.supplier || product.selling?.supplierName || product.supplierName || '';
+  let sellerName = storeName;
+  
   const rating = product.rating || 0;
   const feedbacks = product.feedbacks || 0;
   const images = Array.isArray(product.pics) ? product.pics.length : (Array.isArray(product.images) ? product.images.length : 0);
@@ -1065,7 +1020,8 @@ app.get('/wb-max', requireAuth, async (req, res) => {
     brand,
     sellerId,
     sellerName,
-    sellerCombined: sellerName ? `${sellerName} / ${sellerId}` : sellerId,
+    storeName,
+    sellerCombined: storeName ? `${storeName} / ${sellerId}` : sellerId,
     price: priceU > 0 ? priceU / 100 : 0,
     currency,
     rating,
@@ -1082,46 +1038,6 @@ app.get('/wb-max', requireAuth, async (req, res) => {
 });
 
 // ===== Max CSV endpoint: rich, single-row data for Sheets =====
-function safeGet(obj, path, defVal) {
-  try {
-    const parts = Array.isArray(path) ? path : String(path).split('.');
-    let cur = obj;
-    for (const p of parts) {
-      if (cur == null) return defVal;
-      cur = cur[p];
-    }
-    return cur == null ? defVal : cur;
-  } catch (_) {
-    return defVal;
-  }
-}
-
-function summarizeStocks(product) {
-  const sizes = Array.isArray(product?.sizes) ? product.sizes : [];
-  let totalQty = 0;
-  const perWh = new Map();
-  for (const s of sizes) {
-    const stocks = Array.isArray(s.stocks) ? s.stocks : [];
-    for (const st of stocks) {
-      const q = Number(st.qty || 0);
-      const wh = String(st.wh || '');
-      if (!isNaN(q)) {
-        totalQty += q;
-        if (wh) perWh.set(wh, (perWh.get(wh) || 0) + q);
-      }
-    }
-  }
-  const warehouses = Array.from(perWh.keys());
-  const warehousesQty = warehouses.map(wh => ({ wh, qty: perWh.get(wh) || 0 }));
-  return { totalQty, warehouses, warehousesQty };
-}
-
-function currencyByDomain(domain) {
-  if (domain === 'kg') return 'KGS';
-  if (domain === 'kz') return 'KZT';
-  return 'RUB';
-}
-
 app.get('/wb-max-csv', async (req, res) => {
   const nm = String(req.query.nm || '').trim();
   const dest = String(req.query.dest || '').trim();
@@ -1129,6 +1045,28 @@ app.get('/wb-max-csv', async (req, res) => {
   if (!nm) {
     res.status(400).type('text/csv').send('error,message\n400,Missing nm');
     return;
+  }
+
+  // Вспомогательная функция для безопасного получения значений
+  function safeGet(obj, path, defVal) {
+    try {
+      const parts = String(path).split('.');
+      let cur = obj;
+      for (const p of parts) {
+        if (cur == null) return defVal;
+        cur = cur[p];
+      }
+      return cur == null ? defVal : cur;
+    } catch (_) {
+      return defVal;
+    }
+  }
+
+  // Определение валюты по домену
+  function currencyByDomain(d) {
+    if (d === 'kg') return 'KGS';
+    if (d === 'kz') return 'KZT';
+    return 'RUB';
   }
 
   // Try v2 detail first with a few dests
@@ -1139,23 +1077,6 @@ app.get('/wb-max-csv', async (req, res) => {
   let product = null;
   let source = null;
   let priceU = 0;
-
-  function extractPriceFromProduct(p) {
-    if (!p) return 0;
-    const direct = Number(p.salePriceU || p.clientSalePriceU || p.basicPriceU || p.priceU || p.fullPriceU || 0);
-    if (!isNaN(direct) && direct > 0) return direct;
-    const sizes = Array.isArray(p.sizes) ? p.sizes : [];
-    for (const s of sizes) {
-      const pr = s && s.price;
-      if (!pr) continue;
-      const cands = [pr.basic, pr.product, pr.total, s.salePriceU, s.priceU];
-      for (const v of cands) {
-        const n = Number(v || 0);
-        if (!isNaN(n) && n > 0) return n;
-      }
-    }
-    return 0;
-  }
 
   try {
     for (const d of destCandidates) {
@@ -1217,7 +1138,7 @@ app.get('/wb-max-csv', async (req, res) => {
       } catch (_) {}
     }
 
-    if (product) priceU = extractPriceFromProduct(product);
+    if (product) priceU = extractPrice(product);
     if ((!priceU || priceU <= 0) && basketPrice > 0) priceU = basketPrice;
     if ((!priceU || priceU <= 0) && htmlPrice > 0) priceU = htmlPrice;
 
@@ -1234,16 +1155,19 @@ app.get('/wb-max-csv', async (req, res) => {
     const url = domain === 'kg' ? `https://www.wildberries.kg/catalog/${nm}/detail.aspx` : domain === 'kz' ? `https://www.wildberries.kz/catalog/${nm}/detail.aspx` : `https://www.wildberries.ru/catalog/${nm}/detail.aspx`;
 
     const header = [
-      'nm','name','brand','sellerId','sellerName','price','currency','destUsed','domain','source','rating','feedbacks','images','stocksTotalQty','warehouses','url'
+      'nm','name','brand','sellerId','sellerName','storeName','price','currency','destUsed','domain','source','rating','feedbacks','images','stocksTotalQty','warehouses','url'
     ];
-    // Получим имя продавца, если доступно в продукте; иначе пусто (CSV должен быть быстрым)
-    let sellerName = safeGet(product, 'selling.supplierName', '') || safeGet(product, 'supplierName', '');
+    // Получим название магазина/продавца из API
+    let storeName = safeGet(product, 'supplier', '') || safeGet(product, 'selling.supplierName', '') || safeGet(product, 'supplierName', '');
+    let sellerName = storeName;
+    
     const row = [
       nm,
       String(name).replace(/"/g,'""'),
       String(brand).replace(/"/g,'""'),
       String(sellerId),
       String(sellerName).replace(/"/g,'""'),
+      String(storeName).replace(/"/g,'""'),
       String(price),
       currency,
       String(destUsed),
@@ -1257,7 +1181,7 @@ app.get('/wb-max-csv', async (req, res) => {
       url
     ];
 
-    const csv = `${header.join(',')}\n"${row[0]}","${row[1]}","${row[2]}","${row[3]}","${row[4]}","${row[5]}","${row[6]}","${row[7]}","${row[8]}","${row[9]}","${row[10]}","${row[11]}","${row[12]}","${row[13]}","${row[14]}","${row[15]}"`;
+    const csv = `${header.join(',')}\n"${row[0]}","${row[1]}","${row[2]}","${row[3]}","${row[4]}","${row[5]}","${row[6]}","${row[7]}","${row[8]}","${row[9]}","${row[10]}","${row[11]}","${row[12]}","${row[13]}","${row[14]}","${row[15]}","${row[16]}"`;
     res.status(200).type('text/csv').send(csv);
   } catch (e) {
     res.status(500).type('text/csv').send('error,message\n500,Internal error');
