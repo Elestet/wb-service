@@ -16,8 +16,20 @@ const crypto = require('crypto');
 // Путь к файлу базы данных
 const DB_PATH = path.join(__dirname, 'wb-service.db');
 
-// Инициализация базы данных
-const db = new Database(DB_PATH, { verbose: console.log });
+// Определяем, работаем ли мы на Vercel (read-only filesystem)
+const isVercel = process.env.VERCEL || process.env.NOW_REGION;
+
+let db;
+
+if (isVercel) {
+  // На Vercel используем in-memory базу данных
+  console.log('⚠️ Running on Vercel - using in-memory database');
+  db = new Database(':memory:');
+} else {
+  // Локально используем файловую базу данных
+  console.log('✅ Running locally - using file-based database');
+  db = new Database(DB_PATH, { verbose: console.log });
+}
 
 // Включаем поддержку внешних ключей (CASCADE DELETE)
 db.pragma('foreign_keys = ON');
@@ -292,26 +304,46 @@ function migrateFromLegacyApiKey() {
   // Проверяем, есть ли уже аккаунты в БД
   const accountCount = db.prepare('SELECT COUNT(*) as count FROM accounts').get();
   
-  if (accountCount.count > 0) {
+  if (accountCount.count > 0 && !isVercel) {
     console.log('ℹ️ Аккаунты уже существуют в БД, миграция не требуется');
     return;
   }
   
-  // Проверяем наличие старого файла с ключом
-  if (!fs.existsSync(legacyKeyPath)) {
-    console.log('ℹ️ Файл wb-api-key.txt не найден, создаём пустую БД');
+  // На Vercel всегда создаём дефолтный аккаунт при старте
+  if (isVercel && accountCount.count > 0) {
+    console.log('ℹ️ Vercel: Аккаунты уже созданы в памяти');
     return;
   }
   
+  // На Vercel или если нет файла - создаём только дефолтный аккаунт
+  if (isVercel || !fs.existsSync(legacyKeyPath)) {
+    try {
+      // Создаём дефолтный аккаунт для первого входа
+      const account = createAccount('admin', 'tarelkastakan', null);
+      console.log(`✅ Создан дефолтный аккаунт: ${account.username}`);
+      
+      if (isVercel) {
+        console.log('ℹ️ Vercel: БД в памяти готова, компании можно добавить через UI');
+      }
+    } catch (error) {
+      console.error('❌ Ошибка создания дефолтного аккаунта:', error.message);
+    }
+    return;
+  }
+  
+  // Локально: пытаемся мигрировать из файла
   try {
     const legacyKey = fs.readFileSync(legacyKeyPath, 'utf-8').trim();
     
     if (!legacyKey) {
-      console.log('ℹ️ Файл wb-api-key.txt пустой, миграция не требуется');
+      console.log('ℹ️ Файл wb-api-key.txt пустой');
+      // Всё равно создаём дефолтный аккаунт
+      const account = createAccount('admin', 'tarelkastakan', null);
+      console.log(`✅ Создан дефолтный аккаунт: ${account.username}`);
       return;
     }
     
-    // Создаём дефолтный аккаунт (admin/tarelkastakan из текущей авторизации)
+    // Создаём дефолтный аккаунт
     const account = createAccount('admin', 'tarelkastakan', null);
     console.log(`✅ Создан дефолтный аккаунт: ${account.username}`);
     

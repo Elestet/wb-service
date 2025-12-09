@@ -1334,6 +1334,16 @@ h1{margin:0 0 20px;font-size:32px;color:#2d3436}
   </div>
 
   <h1>📈 Финансовый отчет</h1>
+  
+  ${process.env.VERCEL ? `
+  <div style="background:#fff3cd;border:2px solid #ffc107;border-radius:8px;padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px">
+    <span style="font-size:24px">⚠️</span>
+    <div style="flex:1">
+      <strong style="color:#856404">Vercel Demo Mode:</strong>
+      <span style="color:#856404"> Данные хранятся в памяти и сбросятся при перезапуске сервера. Для production используйте PostgreSQL/MySQL.</span>
+    </div>
+  </div>
+  ` : ''}
 
   <!-- Панель управления -->
   <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;align-items:center">
