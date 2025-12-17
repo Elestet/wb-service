@@ -16,7 +16,58 @@ What Works:
 - **3-tier system**: Static DB → Live parsing → API fallback
 - **Caching**: Каждый продавец парсится только 1 раз за сессию (Map cache)
 - **Anti-block measures**: Random delays (0.5-2s), realistic Chrome headers, multi-domain tries
-- **🆕 FINANCIAL REPORT PAGE**: Создана страница `/fin-report` с кнопкой доступа на главной
+- **🆕 FINANCIAL REPORT PAGE**: Страница `/fin-report` с модальным интерфейсом для отчётов
+
+Latest Update (Dec 17, 2025 - Evening) - ✅ MODAL WORKFLOW & LOADING SYSTEM:
+- **✅ NEW UI WORKFLOW**:
+  - **Single "ОБНОВИТЬ ДАННЫЕ" button**: Loads all 3 reports in parallel (Фин отчёт, Продажи, Заказы)
+  - **Modal-based reports**: Each report opens in its own modal window (not inline switching)
+  - **Button repositioning**: "ОБНОВИТЬ ДАННЫЕ" moved to top-right with purple style
+  - **Color-coded modals**: Purple gradient (Фин), Pink gradient (Продажи), Cyan gradient (Заказы)
+- **✅ LOADING INDICATORS**:
+  - **Animated loading block**: Shows during data fetch with spinner animation
+  - **Per-report badges**: ⏳ badges on each button with pulse animation
+  - **Progressive hide**: Each badge disappears when its report completes
+  - **Auto-complete**: Main loading block hides when all 3 reports done
+  - **CSS animations**: Smooth spin and pulse effects
+- **✅ DATA VALIDATION**:
+  - **Loading state flags**: `finReportDataLoaded`, `salesReportDataLoaded`, `ordersDataLoaded`
+  - **Empty state handling**: Shows "Данные не загружены" when opening before loading
+  - **Error resilience**: Flags set even on errors/empty data to prevent infinite loading
+  - **Reset on refresh**: All flags reset when "ОБНОВИТЬ ДАННЫЕ" clicked
+- **✅ MODAL UX IMPROVEMENTS**:
+  - **Click outside to close**: Clicking modal backdrop closes the modal
+  - **Event propagation**: Inner content stops propagation to prevent accidental closes
+  - **Clean dismiss**: X button and backdrop both work for closing
+- **✅ ERROR HANDLING**:
+  - **Comprehensive catch blocks**: All async operations handle errors
+  - **Flag management**: Loading flags update in success, error, and empty data cases
+  - **User feedback**: Clear error messages in red, empty states in gray
+- **STATUS**: ✅ PRODUCTION READY - Professional loading UX with modal workflow
+
+Latest Update (Dec 17, 2025 - Afternoon) - ✅ MULTI-COMPANY REPORTING ENHANCED:
+- **✅ SALES REPORT ENHANCEMENTS**:
+  - **Multi-company mode fixed**: "Все активные компании" now shows all active companies (was showing only one)
+  - **Company column**: Added as first column in sales report table
+  - **Sortable columns**: All columns clickable with ↕ indicator and purple hover effect
+  - **Default sort**: Sales report sorted alphabetically by company name on load
+  - **Aggregation logic**: Groups by `nmId + brand + company_name` to avoid duplicate rows
+  - **State management**: Global `salesSortState` tracks current sort column and direction
+- **✅ FINANCIAL REPORT TABS**:
+  - **Tab system**: Shows tabs when "All active companies" selected with multiple companies
+  - **Tab switching**: Click to switch between companies (uses numeric index to avoid quote issues)
+  - **Data grouping**: Groups financial data by `company_name` into `finReportDataByCompany` object
+  - **Tab design**: Flat style with gray inactive (#f8f9fa), white active with purple text (#6c5ce7)
+  - **Active indicator**: 3px colored bottom border on active tab
+  - **Visual harmony**: Seamless integration with table design
+- **✅ DEFAULT BEHAVIOR**:
+  - **Selector default**: Auto-selects "All active companies" when multiple companies exist
+  - **Company_name mapping**: Added to both single and multi-company financial report data
+- **✅ BUG FIXES**:
+  - Fixed syntax errors from improper quote escaping in onclick handlers
+  - Removed non-existent `getElementById('datasetBody')` reference
+  - Fixed selector defaulting to first company instead of 'all' mode
+- **STATUS**: ✅ PRODUCTION READY - Enhanced multi-company experience
 
 Latest Update (Dec 7, 2025) - ✅ FINANCIAL MODULE COMPLETED:
 - **✅ FULL IMPLEMENTATION**: Financial Report module fully functional at `/fin-report`

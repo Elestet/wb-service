@@ -40,3 +40,11 @@ Critical Paths:
 - `/wb-price-csv`: minimal, fast, public; returns `price,name`
 - `/wb-max`: rich JSON with seller info, stocks, rating, images (requires auth)
 - `/fin-report`: Financial dashboard with business selector and management UI
+
+Multi-Company Reporting Patterns:
+- **Sales Report**: Aggregates data by `nmId + brand + company_name` when "All active companies" selected
+- **Financial Report Tabs**: Groups data by `company_name`, creates clickable tabs for switching
+- **Tab Switching**: Uses numeric index instead of company names to avoid quote escaping in onclick
+- **Sortable Columns**: Global state management (`salesSortState`) tracks sort column/direction
+- **Default Sort**: Company name alphabetically for better organization
+- **Data Flow**: `loadFromAllBusinesses()` → parallel API calls → adds `company_name` to each item → callback

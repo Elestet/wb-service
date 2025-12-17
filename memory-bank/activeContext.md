@@ -1,23 +1,78 @@
 # Active Context
 
-Last Session Completed (Dec 7, 2025 - Late Evening):
-- ✅ SQLite database architecture implemented
-- ✅ Multi-company support (accounts → businesses hierarchy)
-- ✅ CASCADE DELETE on account removal
-- ✅ Database migration from file-based API keys
-- ✅ New authentication system via DB
-- ✅ Business management UI with modal
-- ✅ Company selector in fin-report
-- ✅ All API endpoints updated for multi-company
-- ✅ Product cost management feature added
-- ✅ New table: product_costs with CASCADE DELETE
+Last Session Completed (Dec 17, 2025 - Evening):
+- ✅ New UI/UX workflow for financial reports (modal-based approach)
+- ✅ Loading indicators with visual feedback (spinner + badges)
+- ✅ Click outside modal to close functionality
+- ✅ Data validation before opening reports
+- ✅ Error handling improvements for async loading
+- ✅ Button "ОБНОВИТЬ ДАННЫЕ" moved to top-right corner
+- ✅ All report buttons converted to modal triggers with unique colors
+
+Previous Session (Dec 17, 2025 - Afternoon):
+- ✅ Multi-company aggregation for sales report ("Все активные компании" mode)
+- ✅ Company name column added to sales report (first column)
+- ✅ Sortable columns with visual indicators (↕ symbol, hover effects)
+- ✅ Default sort by company name (alphabetically)
+- ✅ Tabs system for financial report when multiple companies loaded
+- ✅ Tab switching using numeric indices (avoids quote escaping issues)
+- ✅ Default selector set to "All active companies" when multiple exist
+- ✅ Improved tab design: flat style, color-coded, underline indicator
 
 Current Focus:
-- Database-driven multi-company architecture fully operational
-- Cost management per business (product costs stored in DB)
-- Users can track product costs (себестоимость) for each company
-- Cost data auto-loads from saved values when opening modal
-- Each company has independent cost tracking
+- Modal-based report viewing system fully operational
+- Loading state management with visual indicators
+- Better UX for data fetching and error handling
+- All 3 reports load in parallel when "ОБНОВИТЬ ДАННЫЕ" clicked
+
+Recent Changes (Dec 17, 2025 - Evening):
+
+**✅ COMPLETED - MODAL WORKFLOW & LOADING INDICATORS:**
+- **NEW WORKFLOW**:
+  - **"ОБНОВИТЬ ДАННЫЕ" button**: Single button loads all 3 reports at once (parallel loading)
+  - **Report buttons**: Now open modals instead of switching views (📈 Фин отчёт, 💰 Продажи, 📦 Заказы)
+  - **Button positioning**: "ОБНОВИТЬ ДАННЫЕ" moved to top-right corner with purple style matching other nav buttons
+  - **Color-coded buttons**: Each report button has unique gradient (purple, pink, cyan)
+- **LOADING INDICATORS**:
+  - **Main loading block**: Shows below buttons with animated spinner during data fetch
+  - **Badge indicators**: Small ⏳ badges appear on each report button while loading
+  - **Progressive completion**: Each badge disappears when its report finishes loading
+  - **Auto-hide**: Main loading block hides when all 3 reports complete
+  - **CSS animations**: `@keyframes spin` for spinner, `@keyframes pulse` for badges
+- **DATA VALIDATION**:
+  - **Global flags**: `finReportDataLoaded`, `salesReportDataLoaded`, `ordersDataLoaded`
+  - **Empty state message**: "Данные не загружены" (simplified, gray text) when opening unloaded report
+  - **Flag reset**: All flags reset to `false` when "ОБНОВИТЬ ДАННЫЕ" clicked
+  - **Error handling**: Flags set to `true` even on errors/empty data to prevent infinite loading
+- **MODAL IMPROVEMENTS**:
+  - **Click outside to close**: Click on modal backdrop closes the modal (using `onclick` with `event.stopPropagation()`)
+  - **Modal structure**: Each modal has `onclick` handler, inner content has `stopPropagation()`
+  - **Function**: `closeModalOnOutsideClick(event, modalId)` checks if click target is backdrop
+- **ERROR HANDLING**:
+  - **All fetch operations**: Set loading flags even on error/catch blocks
+  - **Empty data**: Set loading flags when `data.items` is empty or null
+  - **Prevents infinite wait**: Ensures loading indicators always complete
+- **CODE LOCATIONS** (index.js):
+  - Lines 1355-1385: Main loading indicator HTML + button badges
+  - Lines 1598-1602: Global loading flags declaration
+  - Lines 2192-2212: `loadFinancialData()` - resets flags, shows indicators, loads all reports
+  - Lines 2214-2223: `checkAllDataLoaded()` - hides indicators when all complete
+  - Lines 2225-2255: Modal open functions with data validation
+  - Lines 2290-2335: `loadOrders()` with error flag handling
+  - Lines 2421-2460: `loadSalesReport()` with error flag handling
+  - Lines 2655-2707: `loadFullFinReport()` with error flag handling
+  - CSS animations: `@keyframes spin` and `@keyframes pulse` for visual effects
+
+Recent Changes (Dec 17, 2025 - Afternoon):
+  - **Console logging**: Added debugging logs for data flow tracking (to be removed later)
+  - **Error prevention**: Removed getElementById('datasetBody') causing null reference errors
+- **CODE LOCATIONS** (index.js):
+  - Lines 2372-2540: `displaySalesReport()` - renders sales with company column, sorting, aggregation
+  - Lines 2480-2547: `sortSalesReport()` - handles column sorting with state management
+  - Lines 2549-2590: `loadFullFinReport()` - loads financial data, supports 'all' mode
+  - Lines 2607-2682: `displayFullFinReport()`, `switchFinReportCompany()`, `highlightActiveFinTab()` - tab system
+  - Lines 2684-2750: `renderFinReportData()` - renders financial report table
+  - Lines 1803-1848: `updateBusinessSelector()` - defaults to 'all' when multiple companies
 
 Recent Changes (Dec 7, 2025 - Late Evening):
 

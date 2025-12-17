@@ -508,11 +508,12 @@ app.get('/api/wb-orders', requireAuth, async (req, res) => {
     const dateFromStr = req.query.dateFrom || new Date(Date.now() - 30*24*60*60*1000).toISOString().split('T')[0];
     const dateToStr = req.query.dateTo || new Date().toISOString().split('T')[0];
     
-    const ordersUrl = `https://statistics-api.wildberries.ru/api/v1/supplier/orders?dateFrom=${dateFromStr}`;
+    // flag=1 возвращает все заказы (новые и старые)
+    const ordersUrl = `https://statistics-api.wildberries.ru/api/v1/supplier/orders?dateFrom=${dateFromStr}&flag=1`;
     
     const response = await axios.get(ordersUrl, {
       headers: { 'Authorization': business.wb_api_key },
-      timeout: 15000
+      timeout: 30000 // Увеличил timeout до 30 секунд
     });
 
     const orders = response.data || [];
@@ -1288,6 +1289,8 @@ h1{margin:0 0 20px;font-size:32px;color:#2d3436}
 .back-btn:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(108,92,231,0.3)}
 .api-btn{display:inline-block;padding:12px 24px;background:#00b894;color:#fff;border:none;border-radius:8px;font-weight:600;font-size:15px;cursor:pointer;transition:all 0.2s;margin-bottom:20px;margin-left:12px}
 .api-btn:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,185,148,0.3)}
+.update-btn{display:inline-block;padding:10px 20px;background:#6c5ce7;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;transition:all 0.2s}
+.update-btn:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(108,92,231,0.3)}
 .info-box{background:#e3f2fd;padding:20px;border-radius:8px;margin:20px 0;border-left:4px solid #2196f3}
 .info-box h2{margin:0 0 10px;color:#1976d2;font-size:20px}
 .info-box p{margin:5px 0;color:#555;line-height:1.6}
@@ -1318,19 +1321,24 @@ h1{margin:0 0 20px;font-size:32px;color:#2d3436}
 .api-status.active{background:#d4edda;color:#155724;border:2px solid #c3e6cb}
 .api-status.inactive{background:#f8d7da;color:#721c24;border:2px solid #f5c6cb}
 .api-status-icon{font-size:18px}
+@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.7;transform:scale(1.1)}}
 </style>
 </head>
 <body>
 <div class="container">
-  <div style="margin-bottom:20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-    <a href="/" class="back-btn">← Вернуться на главную</a>
-    <button class="api-btn" onclick="openBusinessManager()">🏢 Управление компаниями</button>
-    <div id="businessSelector" style="display:flex;gap:8px;align-items:center">
-      <label style="font-size:14px;font-weight:600;color:#2d3436">Компания:</label>
-      <select id="currentBusiness" onchange="switchBusiness()" style="padding:8px 12px;border:2px solid #dfe6e9;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;background:#fff">
-        <option value="">Загрузка...</option>
-      </select>
+  <div style="margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <a href="/" class="back-btn">← Вернуться на главную</a>
+      <button class="api-btn" onclick="openBusinessManager()">🏢 Управление компаниями</button>
+      <div id="businessSelector" style="display:flex;gap:8px;align-items:center">
+        <label style="font-size:14px;font-weight:600;color:#2d3436">Компания:</label>
+        <select id="currentBusiness" onchange="switchBusiness()" style="padding:8px 12px;border:2px solid #dfe6e9;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;background:#fff">
+          <option value="">Загрузка...</option>
+        </select>
+      </div>
     </div>
+    <button class="update-btn" onclick="loadFinancialData()">📊 ОБНОВИТЬ ДАННЫЕ</button>
   </div>
 
   <h1>📈 Финансовый отчет</h1>
@@ -1353,11 +1361,30 @@ h1{margin:0 0 20px;font-size:32px;color:#2d3436}
       <span style="color:#636e72">—</span>
       <input type="date" id="dateTo" style="padding:6px 10px;border:1px solid #dfe6e9;border-radius:6px;font-size:14px;cursor:pointer" />
     </div>
-    <button id="btnFinReport" onclick="toggleReportType('finReport')" style="padding:12px 24px;background:#fff;color:#2d3436;border:2px solid #dfe6e9;border-radius:8px;font-weight:600;cursor:pointer;font-size:15px;transition:all 0.3s">📈 Фин отчёт</button>
-    <button id="btnSalesReport" onclick="toggleReportType('salesReport')" style="padding:12px 24px;background:#fff;color:#2d3436;border:2px solid #dfe6e9;border-radius:8px;font-weight:600;cursor:pointer;font-size:15px;transition:all 0.3s">💰 Продажи</button>
-    <button onclick="loadFinancialData()" style="padding:12px 24px;background:#00b894;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:15px">📊 Загрузить данные</button>
-    <button onclick="loadOrders()" style="padding:12px 24px;background:#6c5ce7;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:15px">📦 Заказы</button>
+    <button id="btnFinReport" onclick="openFinReportModal()" style="padding:12px 24px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:15px;transition:all 0.3s;box-shadow:0 4px 12px rgba(102,126,234,0.3);position:relative">
+      📈 Фин отчёт
+      <span id="finReportBadge" style="display:none;position:absolute;top:-8px;right:-8px;background:#ff6b6b;color:#fff;border-radius:50%;width:20px;height:20px;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;animation:pulse 1.5s infinite">⏳</span>
+    </button>
+    <button id="btnSalesReport" onclick="openSalesReportModal()" style="padding:12px 24px;background:linear-gradient(135deg,#f093fb 0%,#f5576c 100%);color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:15px;transition:all 0.3s;box-shadow:0 4px 12px rgba(240,147,251,0.3);position:relative">
+      💰 Продажи
+      <span id="salesReportBadge" style="display:none;position:absolute;top:-8px;right:-8px;background:#ff6b6b;color:#fff;border-radius:50%;width:20px;height:20px;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;animation:pulse 1.5s infinite">⏳</span>
+    </button>
+    <button id="btnOrders" onclick="openOrdersModal()" style="padding:12px 24px;background:linear-gradient(135deg,#4facfe 0%,#00f2fe 100%);color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:15px;transition:all 0.3s;box-shadow:0 4px 12px rgba(79,172,254,0.3);position:relative">
+      📦 Заказы
+      <span id="ordersReportBadge" style="display:none;position:absolute;top:-8px;right:-8px;background:#ff6b6b;color:#fff;border-radius:50%;width:20px;height:20px;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;animation:pulse 1.5s infinite">⏳</span>
+    </button>
     <button onclick="openCostModal()" style="padding:12px 24px;background:#fd79a8;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:15px">💰 Себестоимость</button>
+  </div>
+  
+  <!-- Индикатор загрузки -->
+  <div id="loadingIndicator" style="display:none;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;padding:16px 24px;border-radius:8px;margin-bottom:20px;box-shadow:0 4px 12px rgba(102,126,234,0.3)">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="width:24px;height:24px;border:3px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 1s linear infinite"></div>
+      <div>
+        <div style="font-weight:700;font-size:16px">⏳ Загрузка данных...</div>
+        <div id="loadingStatus" style="font-size:13px;opacity:0.9;margin-top:4px">Загружаются все отчёты</div>
+      </div>
+    </div>
   </div>
 
   <!-- Карточки с общей статистикой -->
@@ -1389,14 +1416,17 @@ h1{margin:0 0 20px;font-size:32px;color:#2d3436}
     </div>
   </div>
 
-  <!-- Датасет (динамическая таблица) -->
-  <div id="datasetContainer" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-top:20px;display:none">
-    <div style="padding:20px;border-bottom:2px solid #f1f3f5">
-      <h2 style="margin:0;font-size:20px;color:#2d3436">📊 Датасет</h2>
-    </div>
-    <div style="overflow-x:auto;max-width:100%;max-height:600px;overflow-y:auto">
-      <table id="datasetTable" style="width:100%;border-collapse:collapse;min-width:3000px">
-        <thead id="datasetHeader" style="position:sticky;top:0;z-index:10">
+  <!-- Модальное окно: Финансовый отчёт -->
+  <div id="finReportModal" class="modal" onclick="closeModalOnOutsideClick(event, 'finReportModal')">
+    <div class="modal-content" style="max-width:95vw;width:95vw;max-height:90vh" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h2>📈 Финансовый отчёт</h2>
+        <button class="close-btn" onclick="closeModal('finReportModal')">&times;</button>
+      </div>
+      <div id="finReportTabs" style="display:none;gap:0;margin-bottom:0;flex-wrap:wrap;background:#f8f9fa;padding:0 20px"></div>
+      <div style="overflow-x:auto;max-width:100%;max-height:70vh;overflow-y:auto;border-top:2px solid #e9ecef">
+        <table id="finReportTable" style="width:100%;border-collapse:collapse;min-width:3000px">
+          <thead id="finReportHeader" style="position:sticky;top:0;z-index:10;background:#f8f9fa">
           <tr style="background:#f8f9fa">
             <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e9ecef;font-weight:600;color:#2d3436;white-space:nowrap;font-size:13px">Номер отчёта</th>
             <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e9ecef;font-weight:600;color:#2d3436;white-space:nowrap;font-size:13px">Дата начала</th>
@@ -1479,11 +1509,48 @@ h1{margin:0 0 20px;font-size:32px;color:#2d3436}
             <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e9ecef;font-weight:600;color:#2d3436;white-space:nowrap;font-size:13px">График платежей</th>
           </tr>
         </thead>
-        <tbody id="datasetBody">
+        <tbody id="finReportBody">
         </tbody>
       </table>
     </div>
   </div>
+</div>
+
+<!-- Модальное окно: Продажи -->
+<div id="salesReportModal" class="modal" onclick="closeModalOnOutsideClick(event, 'salesReportModal')">
+  <div class="modal-content" style="max-width:90vw;width:90vw;max-height:90vh" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2>💰 Отчёт по продажам</h2>
+      <button class="close-btn" onclick="closeModal('salesReportModal')">&times;</button>
+    </div>
+    <div style="overflow-x:auto;max-width:100%;max-height:70vh;overflow-y:auto">
+      <table id="salesReportTable" style="width:100%;border-collapse:collapse">
+        <thead id="salesReportHeader" style="position:sticky;top:0;z-index:10;background:#f8f9fa">
+        </thead>
+        <tbody id="salesReportBody">
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Модальное окно: Заказы -->
+<div id="ordersModal" class="modal" onclick="closeModalOnOutsideClick(event, 'ordersModal')">
+  <div class="modal-content" style="max-width:90vw;width:90vw;max-height:90vh" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h2>📦 Отчёт по заказам</h2>
+      <button class="close-btn" onclick="closeModal('ordersModal')">&times;</button>
+    </div>
+    <div style="overflow-x:auto;max-width:100%;max-height:70vh;overflow-y:auto">
+      <table id="ordersTable" style="width:100%;border-collapse:collapse">
+        <thead id="ordersHeader" style="position:sticky;top:0;z-index:10;background:#f8f9fa">
+        </thead>
+        <tbody id="ordersBody">
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
 </div>
 
 <!-- Модальное окно управления компаниями -->
@@ -1552,6 +1619,66 @@ h1{margin:0 0 20px;font-size:32px;color:#2d3436}
 // ==================== УПРАВЛЕНИЕ КОМПАНИЯМИ ====================
 let businesses = [];
 let currentBusinessId = null;
+// Флаги загрузки данных для каждого типа отчёта
+let finReportDataLoaded = false;
+let salesReportDataLoaded = false;
+let ordersDataLoaded = false;
+
+// Переменная для хранения выбранного типа отчета
+let selectedReportType = null;
+
+// Функция переключения типа отчета
+function toggleReportType(type) {
+  const btnFinReport = document.getElementById('btnFinReport');
+  const btnSalesReport = document.getElementById('btnSalesReport');
+  const btnOrders = document.getElementById('btnOrders');
+  
+  // Сбрасываем стили всех кнопок
+  const resetButton = (btn) => {
+    btn.style.background = '#fff';
+    btn.style.color = '#2d3436';
+    btn.style.border = '2px solid #dfe6e9';
+    btn.style.transform = 'none';
+    btn.style.boxShadow = 'none';
+  };
+  
+  if (selectedReportType === type) {
+    // Снимаем выбор
+    selectedReportType = null;
+    resetButton(btnFinReport);
+    resetButton(btnSalesReport);
+    resetButton(btnOrders);
+  } else {
+    // Сначала сбрасываем все кнопки
+    resetButton(btnFinReport);
+    resetButton(btnSalesReport);
+    resetButton(btnOrders);
+    
+    // Выбираем нужную кнопку
+    selectedReportType = type;
+    let activeBtn, gradient, borderColor;
+    
+    if (type === 'finReport') {
+      activeBtn = btnFinReport;
+      gradient = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+      borderColor = '#667eea';
+    } else if (type === 'salesReport') {
+      activeBtn = btnSalesReport;
+      gradient = 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)';
+      borderColor = '#f093fb';
+    } else if (type === 'orders') {
+      activeBtn = btnOrders;
+      gradient = 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)';
+      borderColor = '#4facfe';
+    }
+    
+    activeBtn.style.background = gradient;
+    activeBtn.style.color = '#fff';
+    activeBtn.style.border = '2px solid ' + borderColor;
+    activeBtn.style.transform = 'translateY(-2px)';
+    activeBtn.style.boxShadow = '0 4px 12px rgba(102,126,234,0.4)';
+  }
+}
 
 function openBusinessManager() {
   document.getElementById('businessModal').classList.add('active');
@@ -1714,21 +1841,41 @@ function updateBusinessSelector(businessList) {
   }
   
   selector.disabled = false;
-  selector.innerHTML = activeBusinesses.map(b => 
+  
+  // Добавляем опцию "Все активные компании" если больше одной компании
+  let options = '';
+  if (activeBusinesses.length > 1) {
+    options += '<option value="all">🌐 Все активные компании</option>';
+  }
+  
+  options += activeBusinesses.map(b => 
     \`<option value="\${b.id}">\${b.company_name}</option>\`
   ).join('');
   
-  // Устанавливаем первую активную компанию как текущую
-  if (!currentBusinessId || !activeBusinesses.find(b => b.id === currentBusinessId)) {
+  selector.innerHTML = options;
+  
+  // Устанавливаем "Все активные компании" по умолчанию если их больше одной
+  if (activeBusinesses.length > 1) {
+    if (!currentBusinessId || currentBusinessId === 'all' || !activeBusinesses.find(b => b.id === currentBusinessId)) {
+      currentBusinessId = 'all';
+      selector.value = 'all';
+    } else {
+      selector.value = currentBusinessId;
+    }
+  } else {
+    // Если только одна компания - ставим её
     currentBusinessId = activeBusinesses[0].id;
     selector.value = currentBusinessId;
   }
+  
+  console.log('updateBusinessSelector: currentBusinessId=' + currentBusinessId + ', selector.value=' + selector.value);
 }
 
 function switchBusiness() {
-  currentBusinessId = parseInt(document.getElementById('currentBusiness').value);
+  const value = document.getElementById('currentBusiness').value;
+  currentBusinessId = value === 'all' ? 'all' : parseInt(value);
   // Перезагружаем данные для новой компании (если они были загружены)
-  console.log('Переключено на компанию ID:', currentBusinessId);
+  console.log('switchBusiness: value=' + value + ', currentBusinessId=' + currentBusinessId);
 }
 
 // Закрытие модалки при клике вне её
@@ -1737,6 +1884,70 @@ document.getElementById('businessModal').addEventListener('click', function(e) {
     closeBusinessManager();
   }
 });
+
+// Helper функция для загрузки данных из всех активных компаний
+function loadFromAllBusinesses(endpoint, dateRange, displayCallback) {
+  const activeBusinesses = businesses.filter(b => b.is_active === 1);
+  
+  if (activeBusinesses.length === 0) {
+    const tbody = document.getElementById('datasetBody');
+    tbody.innerHTML = '<tr><td colspan="10" style="padding:40px;text-align:center;color:#d63031">❌ Нет активных компаний</td></tr>';
+    return;
+  }
+  
+  // Делаем параллельные запросы ко всем активным компаниям
+  const promises = activeBusinesses.map(business => 
+    fetch(endpoint + '?businessId=' + business.id + '&dateFrom=' + dateRange.dateFrom + '&dateTo=' + dateRange.dateTo, {
+      headers: { 'Authorization': 'Bearer ' + localStorage.getItem('authToken') }
+    })
+    .then(res => res.json())
+    .catch(err => ({ error: 'Ошибка загрузки для ' + business.company_name + ': ' + err.message }))
+  );
+  
+  Promise.all(promises).then(results => {
+    // Фильтруем ошибки и объединяем данные
+    let allData = [];
+    let errors = [];
+    
+    results.forEach((result, index) => {
+      const companyName = activeBusinesses[index].company_name;
+      
+      console.log('Результат от компании', companyName, ':', result);
+      
+      if (result.error) {
+        errors.push(companyName + ': ' + result.error);
+      } else if (result.items) {
+        // Для Orders API - извлекаем items и добавляем company_name
+        if (Array.isArray(result.items)) {
+          const itemsWithCompany = result.items.map(item => ({ ...item, company_name: companyName }));
+          allData = allData.concat(itemsWithCompany);
+        }
+      } else if (result.data) {
+        // Для Sales API и Fin Report - извлекаем data и добавляем company_name
+        if (Array.isArray(result.data)) {
+          const dataWithCompany = result.data.map(item => ({ ...item, company_name: companyName }));
+          allData = allData.concat(dataWithCompany);
+        } else {
+          allData.push({ ...result.data, company_name: companyName });
+        }
+      } else if (Array.isArray(result)) {
+        // Если result сам является массивом
+        const resultWithCompany = result.map(item => ({ ...item, company_name: companyName }));
+        allData = allData.concat(resultWithCompany);
+      }
+    });
+    
+    if (errors.length > 0) {
+      console.warn('Ошибки при загрузке:', errors);
+    }
+    
+    console.log('Всего загружено записей:', allData.length);
+    console.log('Пример первой записи:', allData[0]);
+    
+    // Передаем объединенные данные в callback
+    displayCallback(allData);
+  });
+}
 
 // Загружаем список компаний при загрузке страницы
 loadBusinesses();
@@ -1925,169 +2136,37 @@ document.getElementById('costModal').addEventListener('click', function(e) {
   }
 });
 
-// Устанавливаем даты по умолчанию (последние 30 дней)
+// Устанавливаем даты по умолчанию (последние 30 дней) и загружаем компании
 window.addEventListener('DOMContentLoaded', function() {
+  // Проверяем авторизацию
+  const token = localStorage.getItem('authToken');
+  if (!token) {
+    window.location.href = '/login';
+    return;
+  }
+  
   const dateTo = new Date();
   const dateFrom = new Date();
   dateFrom.setDate(dateFrom.getDate() - 30);
   
   document.getElementById('dateTo').value = dateTo.toISOString().split('T')[0];
   document.getElementById('dateFrom').value = dateFrom.toISOString().split('T')[0];
+  
+  // Загружаем список компаний
+  loadBusinesses();
 });
 
-// Переменная для хранения выбранного типа отчета
-let selectedReportType = null;
+// ==================== ФИНАНСОВЫЕ ОТЧЁТЫ ====================
 
-// Функция переключения типа отчета
-function toggleReportType(type) {
-  const btnFinReport = document.getElementById('btnFinReport');
-  const btnSalesReport = document.getElementById('btnSalesReport');
-  const datasetContainer = document.getElementById('datasetContainer');
-  
-  // Сбрасываем стили всех кнопок
-  const resetButton = (btn) => {
-    btn.style.background = '#fff';
-    btn.style.color = '#2d3436';
-    btn.style.border = '2px solid #dfe6e9';
-    btn.style.transform = 'none';
-    btn.style.boxShadow = 'none';
-  };
-  
-  if (selectedReportType === type) {
-    // Снимаем выбор
-    selectedReportType = null;
-    resetButton(btnFinReport);
-    resetButton(btnSalesReport);
-    datasetContainer.style.display = 'none';
-  } else {
-    // Сначала сбрасываем все кнопки
-    resetButton(btnFinReport);
-    resetButton(btnSalesReport);
-    
-    // Выбираем нужную кнопку
-    selectedReportType = type;
-    const activeBtn = type === 'finReport' ? btnFinReport : btnSalesReport;
-    const gradient = type === 'finReport' 
-      ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' 
-      : 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)';
-    const borderColor = type === 'finReport' ? '#667eea' : '#f093fb';
-    
-    activeBtn.style.background = gradient;
-    activeBtn.style.color = '#fff';
-    activeBtn.style.border = '2px solid ' + borderColor;
-    activeBtn.style.transform = 'translateY(-2px)';
-    activeBtn.style.boxShadow = '0 4px 12px rgba(102,126,234,0.4)';
-    datasetContainer.style.display = 'block';
-    
-    // Обновляем заголовок таблицы
-    updateDatasetHeader(type);
-  }
+// Функция закрытия модального окна
+function closeModal(modalId) {
+  document.getElementById(modalId).style.display = 'none';
 }
 
-// Обновление заголовка датасета
-function updateDatasetHeader(type) {
-  const thead = document.getElementById('datasetHeader');
-  
-  if (type === 'salesReport') {
-    // Заголовки для отчёта по продажам
-    thead.innerHTML = '<tr style="background:#f8f9fa">' +
-      '<th style="padding:12px;text-align:left;border-bottom:2px solid #e9ecef;font-weight:600;color:#2d3436;white-space:nowrap;font-size:14px">Артикул WB</th>' +
-      '<th style="padding:12px;text-align:left;border-bottom:2px solid #e9ecef;font-weight:600;color:#2d3436;white-space:nowrap;font-size:14px">Предмет</th>' +
-      '<th style="padding:12px;text-align:left;border-bottom:2px solid #e9ecef;font-weight:600;color:#2d3436;white-space:nowrap;font-size:14px">Бренд</th>' +
-      '<th style="padding:12px;text-align:right;border-bottom:2px solid #e9ecef;font-weight:600;color:#2d3436;white-space:nowrap;font-size:14px">Кол-во продаж</th>' +
-      '<th style="padding:12px;text-align:right;border-bottom:2px solid #e9ecef;font-weight:600;color:#2d3436;white-space:nowrap;font-size:14px">Общая выручка</th>' +
-      '<th style="padding:12px;text-align:right;border-bottom:2px solid #e9ecef;font-weight:600;color:#2d3436;white-space:nowrap;font-size:14px">Комиссия</th>' +
-      '<th style="padding:12px;text-align:right;border-bottom:2px solid #e9ecef;font-weight:600;color:#2d3436;white-space:nowrap;font-size:14px">Логистика</th>' +
-      '<th style="padding:12px;text-align:right;border-bottom:2px solid #e9ecef;font-weight:600;color:#2d3436;white-space:nowrap;font-size:14px">Прибыль</th>' +
-      '<th style="padding:12px;text-align:right;border-bottom:2px solid #e9ecef;font-weight:600;color:#2d3436;white-space:nowrap;font-size:14px">Средняя цена</th>' +
-      '<th style="padding:12px;text-align:left;border-bottom:2px solid #e9ecef;font-weight:600;color:#2d3436;white-space:nowrap;font-size:14px">Склад</th>' +
-      '</tr>';
-  } else if (type === 'finReport') {
-    // Полный заголовок для финансового отчёта (все 82 колонки)
-    const thStyle = 'padding:8px 12px;text-align:left;border-bottom:2px solid #e9ecef;font-weight:600;color:#2d3436;white-space:nowrap;font-size:13px';
-    const thStyleRight = 'padding:8px 12px;text-align:right;border-bottom:2px solid #e9ecef;font-weight:600;color:#2d3436;white-space:nowrap;font-size:13px';
-    
-    thead.innerHTML = '<tr style="background:#f8f9fa">' +
-      '<th style="' + thStyle + '">Номер отчёта</th>' +
-      '<th style="' + thStyle + '">Дата начала</th>' +
-      '<th style="' + thStyle + '">Дата конца</th>' +
-      '<th style="' + thStyle + '">Дата создания</th>' +
-      '<th style="' + thStyle + '">Валюта</th>' +
-      '<th style="' + thStyle + '">ID строки</th>' +
-      '<th style="' + thStyle + '">GI ID</th>' +
-      '<th style="' + thStyleRight + '">% доставки</th>' +
-      '<th style="' + thStyle + '">Тариф дата с</th>' +
-      '<th style="' + thStyle + '">Тариф дата по</th>' +
-      '<th style="' + thStyle + '">Предмет</th>' +
-      '<th style="' + thStyle + '">Артикул WB</th>' +
-      '<th style="' + thStyle + '">Бренд</th>' +
-      '<th style="' + thStyle + '">Артикул продавца</th>' +
-      '<th style="' + thStyle + '">Размер</th>' +
-      '<th style="' + thStyle + '">Баркод</th>' +
-      '<th style="' + thStyle + '">Тип документа</th>' +
-      '<th style="' + thStyleRight + '">Кол-во</th>' +
-      '<th style="' + thStyleRight + '">Цена розничная</th>' +
-      '<th style="' + thStyleRight + '">Сумма продажи</th>' +
-      '<th style="' + thStyleRight + '">% скидки</th>' +
-      '<th style="' + thStyleRight + '">% комиссии</th>' +
-      '<th style="' + thStyle + '">Склад</th>' +
-      '<th style="' + thStyle + '">Операция</th>' +
-      '<th style="' + thStyle + '">Дата заказа</th>' +
-      '<th style="' + thStyle + '">Дата продажи</th>' +
-      '<th style="' + thStyle + '">Дата отчёта</th>' +
-      '<th style="' + thStyle + '">ШК</th>' +
-      '<th style="' + thStyleRight + '">Розница со скидкой</th>' +
-      '<th style="' + thStyleRight + '">Стоимость доставки</th>' +
-      '<th style="' + thStyleRight + '">Сумма возврата</th>' +
-      '<th style="' + thStyleRight + '">Доставка руб</th>' +
-      '<th style="' + thStyle + '">Тип коробки</th>' +
-      '<th style="' + thStyleRight + '">Скидка товара</th>' +
-      '<th style="' + thStyleRight + '">Промо продавца</th>' +
-      '<th style="' + thStyleRight + '">% СПП</th>' +
-      '<th style="' + thStyleRight + '">% КВВ база</th>' +
-      '<th style="' + thStyleRight + '">% КВВ</th>' +
-      '<th style="' + thStyleRight + '">Рейтинг %</th>' +
-      '<th style="' + thStyleRight + '">КГВП v2</th>' +
-      '<th style="' + thStyleRight + '">Комиссия продаж</th>' +
-      '<th style="' + thStyleRight + '">К перечислению</th>' +
-      '<th style="' + thStyleRight + '">Вознаграждение</th>' +
-      '<th style="' + thStyleRight + '">Эквайринг</th>' +
-      '<th style="' + thStyleRight + '">% эквайринга</th>' +
-      '<th style="' + thStyle + '">Обработка платежа</th>' +
-      '<th style="' + thStyle + '">Банк эквайринга</th>' +
-      '<th style="' + thStyleRight + '">Вознаграждение WB</th>' +
-      '<th style="' + thStyleRight + '">НДС вознагр</th>' +
-      '<th style="' + thStyle + '">Офис</th>' +
-      '<th style="' + thStyle + '">ID офиса</th>' +
-      '<th style="' + thStyle + '">ID продавца</th>' +
-      '<th style="' + thStyle + '">Название продавца</th>' +
-      '<th style="' + thStyle + '">ИНН</th>' +
-      '<th style="' + thStyle + '">№ декларации</th>' +
-      '<th style="' + thStyle + '">Тип бонуса</th>' +
-      '<th style="' + thStyle + '">ID стикера</th>' +
-      '<th style="' + thStyle + '">Страна сайта</th>' +
-      '<th style="' + thStyle + '">DBS</th>' +
-      '<th style="' + thStyleRight + '">Штраф</th>' +
-      '<th style="' + thStyleRight + '">Доп. платёж</th>' +
-      '<th style="' + thStyleRight + '">Ребилл логистика</th>' +
-      '<th style="' + thStyle + '">Ребилл орг</th>' +
-      '<th style="' + thStyleRight + '">Хранение</th>' +
-      '<th style="' + thStyleRight + '">Удержание</th>' +
-      '<th style="' + thStyleRight + '">Приёмка</th>' +
-      '<th style="' + thStyle + '">ID сборки</th>' +
-      '<th style="' + thStyle + '">КИЗ</th>' +
-      '<th style="' + thStyle + '">SRID</th>' +
-      '<th style="' + thStyle + '">Тип отчёта</th>' +
-      '<th style="' + thStyle + '">Юрлицо</th>' +
-      '<th style="' + thStyle + '">TRBX ID</th>' +
-      '<th style="' + thStyleRight + '">Рассрочка</th>' +
-      '<th style="' + thStyleRight + '">% скидки WIBES</th>' +
-      '<th style="' + thStyleRight + '">Кэшбэк сумма</th>' +
-      '<th style="' + thStyleRight + '">Кэшбэк скидка</th>' +
-      '<th style="' + thStyleRight + '">Кэшбэк комиссия</th>' +
-      '<th style="' + thStyle + '">UID заказа</th>' +
-      '<th style="' + thStyle + '">График платежей</th>' +
-      '</tr>';
+// Закрытие модального окна при клике вне его содержимого
+function closeModalOnOutsideClick(event, modalId) {
+  if (event.target.id === modalId) {
+    closeModal(modalId);
   }
 }
 
@@ -2105,6 +2184,7 @@ function getDateRange() {
 }
 
 // Загрузка финансовых данных
+// Функция загрузки ВСЕХ отчётов сразу
 function loadFinancialData() {
   if (!currentBusinessId) {
     alert('❌ Выберите компанию');
@@ -2114,37 +2194,66 @@ function loadFinancialData() {
   const dateRange = getDateRange();
   if (!dateRange) return;
   
-  // Проверяем выбран ли тип отчёта
-  if (selectedReportType === 'finReport') {
-    loadFullFinReport(dateRange);
-    return;
+  // Сбрасываем флаги загрузки
+  finReportDataLoaded = false;
+  salesReportDataLoaded = false;
+  ordersDataLoaded = false;
+  
+  // Показываем индикатор загрузки
+  document.getElementById('loadingIndicator').style.display = 'block';
+  document.getElementById('finReportBadge').style.display = 'flex';
+  document.getElementById('salesReportBadge').style.display = 'flex';
+  document.getElementById('ordersReportBadge').style.display = 'flex';
+  
+  // Загружаем все 3 отчёта параллельно
+  loadFullFinReport(dateRange);
+  loadSalesReport(dateRange);
+  loadOrders();
+}
+
+// Проверка завершения всех загрузок
+function checkAllDataLoaded() {
+  if (finReportDataLoaded && salesReportDataLoaded && ordersDataLoaded) {
+    // Скрываем индикатор загрузки
+    document.getElementById('loadingIndicator').style.display = 'none';
+    document.getElementById('finReportBadge').style.display = 'none';
+    document.getElementById('salesReportBadge').style.display = 'none';
+    document.getElementById('ordersReportBadge').style.display = 'none';
+  }
+}
+
+// Функции открытия модалок
+function openFinReportModal() {
+  const modal = document.getElementById('finReportModal');
+  const tbody = document.getElementById('finReportBody');
+  
+  if (!finReportDataLoaded) {
+    tbody.innerHTML = '<tr><td colspan="82" style="padding:40px;text-align:center;color:#636e72;font-size:16px">Данные не загружены</td></tr>';
   }
   
-  if (selectedReportType === 'salesReport') {
-    loadSalesReport(dateRange);
-    return;
+  modal.style.display = 'flex';
+}
+
+function openSalesReportModal() {
+  const modal = document.getElementById('salesReportModal');
+  const tbody = document.getElementById('salesReportBody');
+  
+  if (!salesReportDataLoaded) {
+    tbody.innerHTML = '<tr><td colspan="11" style="padding:40px;text-align:center;color:#636e72;font-size:16px">Данные не загружены</td></tr>';
   }
   
-  const tbody = document.getElementById('finTableBody');
-  tbody.innerHTML = '<tr><td colspan="8" style="padding:40px;text-align:center;color:#636e72">⏳ Загрузка данных...</td></tr>';
+  modal.style.display = 'flex';
+}
+
+function openOrdersModal() {
+  const modal = document.getElementById('ordersModal');
+  const tbody = document.getElementById('ordersBody');
   
-  fetch('/api/wb-finance?businessId=' + currentBusinessId + '&dateFrom=' + dateRange.dateFrom + '&dateTo=' + dateRange.dateTo, {
-    headers: {
-      'Authorization': 'Bearer ' + localStorage.getItem('authToken')
-    }
-  })
-  .then(res => res.json())
-  .then(data => {
-    if (data.error) {
-      tbody.innerHTML = '<tr><td colspan="8" style="padding:40px;text-align:center;color:#d63031">❌ ' + data.error + '</td></tr>';
-      return;
-    }
-    
-    displayFinancialData(data);
-  })
-  .catch(err => {
-    tbody.innerHTML = '<tr><td colspan="8" style="padding:40px;text-align:center;color:#d63031">❌ Ошибка загрузки: ' + err.message + '</td></tr>';
-  });
+  if (!ordersDataLoaded) {
+    tbody.innerHTML = '<tr><td colspan="7" style="padding:40px;text-align:center;color:#636e72;font-size:16px">Данные не загружены</td></tr>';
+  }
+  
+  modal.style.display = 'flex';
 }
 
 function loadSales() {
@@ -2187,8 +2296,14 @@ function loadOrders() {
   const dateRange = getDateRange();
   if (!dateRange) return;
   
-  const tbody = document.getElementById('finTableBody');
-  tbody.innerHTML = '<tr><td colspan="8" style="padding:40px;text-align:center;color:#636e72">⏳ Загрузка заказов...</td></tr>';
+  const tbody = document.getElementById('ordersBody');
+  tbody.innerHTML = '<tr><td colspan="7" style="padding:40px;text-align:center;color:#636e72">⏳ Загрузка заказов...</td></tr>';
+  
+  // Если выбраны все компании - загружаем из всех активных
+  if (currentBusinessId === 'all') {
+    loadFromAllBusinesses('/api/wb-orders', dateRange, displayOrdersData);
+    return;
+  }
   
   fetch('/api/wb-orders?businessId=' + currentBusinessId + '&dateFrom=' + dateRange.dateFrom + '&dateTo=' + dateRange.dateTo, {
     headers: {
@@ -2198,15 +2313,108 @@ function loadOrders() {
   .then(res => res.json())
   .then(data => {
     if (data.error) {
-      tbody.innerHTML = '<tr><td colspan="8" style="padding:40px;text-align:center;color:#d63031">❌ ' + data.error + '</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="padding:40px;text-align:center;color:#d63031">❌ ' + data.error + '</td></tr>';
+      // Устанавливаем флаг даже при ошибке, чтобы не ждать вечно
+      ordersDataLoaded = true;
+      document.getElementById('ordersReportBadge').style.display = 'none';
+      checkAllDataLoaded();
       return;
     }
     
-    displayFinancialData(data);
+    displayOrdersData(data);
   })
   .catch(err => {
-    tbody.innerHTML = '<tr><td colspan="8" style="padding:40px;text-align:center;color:#d63031">❌ Ошибка загрузки: ' + err.message + '</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="padding:40px;text-align:center;color:#d63031">❌ Ошибка загрузки: ' + err.message + '</td></tr>';
+    // Устанавливаем флаг даже при ошибке, чтобы не ждать вечно
+    ordersDataLoaded = true;
+    document.getElementById('ordersReportBadge').style.display = 'none';
+    checkAllDataLoaded();
   });
+}
+
+// Отображение данных заказов
+function displayOrdersData(data) {
+  const tbody = document.getElementById('ordersBody');
+  const thead = document.getElementById('ordersHeader');
+  
+  // Устанавливаем заголовки
+  thead.innerHTML = '<tr style="background:#f8f9fa">' +
+    '<th style="padding:12px;text-align:left;border-bottom:2px solid #e9ecef;font-weight:600;color:#2d3436;white-space:nowrap;font-size:14px">Артикул WB</th>' +
+    '<th style="padding:12px;text-align:left;border-bottom:2px solid #e9ecef;font-weight:600;color:#2d3436;white-space:nowrap;font-size:14px">Предмет</th>' +
+    '<th style="padding:12px;text-align:left;border-bottom:2px solid #e9ecef;font-weight:600;color:#2d3436;white-space:nowrap;font-size:14px">Бренд</th>' +
+    '<th style="padding:12px;text-align:right;border-bottom:2px solid #e9ecef;font-weight:600;color:#2d3436;white-space:nowrap;font-size:14px">Кол-во заказов</th>' +
+    '<th style="padding:12px;text-align:right;border-bottom:2px solid #e9ecef;font-weight:600;color:#2d3436;white-space:nowrap;font-size:14px">Общая сумма</th>' +
+    '<th style="padding:12px;text-align:right;border-bottom:2px solid #e9ecef;font-weight:600;color:#2d3436;white-space:nowrap;font-size:14px">Средняя цена</th>' +
+    '<th style="padding:12px;text-align:left;border-bottom:2px solid #e9ecef;font-weight:600;color:#2d3436;white-space:nowrap;font-size:14px">Склад</th>' +
+    '</tr>';
+  
+  if (!data.items || data.items.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="padding:40px;text-align:center;color:#636e72">Нет заказов за выбранный период</td></tr>';
+    
+    // Устанавливаем флаг загрузки даже если данных нет
+    ordersDataLoaded = true;
+    document.getElementById('ordersReportBadge').style.display = 'none';
+    checkAllDataLoaded();
+    return;
+  }
+  
+  // Группируем заказы по артикулам
+  const grouped = {};
+  data.items.forEach(item => {
+    const key = item.nmId;
+    if (!grouped[key]) {
+      grouped[key] = {
+        nmId: item.nmId,
+        subject: item.subject,
+        brand: item.subject,
+        quantity: 0,
+        totalAmount: 0,
+        warehouse: '—'
+      };
+    }
+    grouped[key].quantity += 1;
+    grouped[key].totalAmount += item.forPay || 0;
+  });
+  
+  const rows = Object.values(grouped);
+  
+  // Обновляем карточки статистики
+  document.getElementById('totalRevenue').textContent = (data.stats?.totalRevenue || 0).toFixed(2) + ' ₽';
+  document.getElementById('totalCommission').textContent = '—';
+  document.getElementById('totalLogistics').textContent = '—';
+  document.getElementById('netProfit').textContent = data.items.length + ' заказов';
+  
+  // Заполняем таблицу
+  tbody.innerHTML = '';
+  rows.forEach(row => {
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid #f1f3f5';
+    tr.style.transition = 'background 0.2s';
+    tr.onmouseover = () => tr.style.background = '#f8f9fa';
+    tr.onmouseout = () => tr.style.background = 'transparent';
+    
+    const avgPrice = row.totalAmount / row.quantity;
+    
+    tr.innerHTML = 
+      '<td style="padding:12px;font-weight:600;color:#2d3436">' + (row.nmId || '—') + '</td>' +
+      '<td style="padding:12px;color:#636e72">' + (row.subject || '—') + '</td>' +
+      '<td style="padding:12px;color:#636e72">' + (row.brand || '—') + '</td>' +
+      '<td style="padding:12px;text-align:right;font-weight:600;color:#0984e3">' + row.quantity + '</td>' +
+      '<td style="padding:12px;text-align:right;font-weight:600;color:#00b894">' + row.totalAmount.toFixed(2) + ' ₽</td>' +
+      '<td style="padding:12px;text-align:right;color:#636e72">' + avgPrice.toFixed(2) + ' ₽</td>' +
+      '<td style="padding:12px;color:#636e72">' + row.warehouse + '</td>';
+    
+    tbody.appendChild(tr);
+  });
+  
+  // Устанавливаем флаг загрузки
+  ordersDataLoaded = true;
+  
+  // Скрываем бейдж загрузки для заказов
+  document.getElementById('ordersReportBadge').style.display = 'none';
+  
+  // Проверяем завершение всех загрузок
+  checkAllDataLoaded();
 }
 
 // Загрузка отчёта по продажам (уникальные артикулы)
@@ -2216,8 +2424,14 @@ function loadSalesReport(dateRange) {
     return;
   }
   
-  const tbody = document.getElementById('datasetBody');
-  tbody.innerHTML = '<tr><td colspan="82" style="padding:40px;text-align:center;color:#636e72">⏳ Загрузка отчёта по продажам...</td></tr>';
+  const tbody = document.getElementById('salesReportBody');
+  tbody.innerHTML = '<tr><td colspan="11" style="padding:40px;text-align:center;color:#636e72">⏳ Загрузка отчёта по продажам...</td></tr>';
+  
+  // Если выбраны все компании - загружаем из всех активных
+  if (currentBusinessId === 'all') {
+    loadFromAllBusinesses('/api/wb-sales-grouped', dateRange, displaySalesReport);
+    return;
+  }
   
   fetch('/api/wb-sales-grouped?businessId=' + currentBusinessId + '&dateFrom=' + dateRange.dateFrom + '&dateTo=' + dateRange.dateTo, {
     headers: {
@@ -2227,31 +2441,121 @@ function loadSalesReport(dateRange) {
   .then(res => res.json())
   .then(response => {
     if (response.error) {
-      tbody.innerHTML = '<tr><td colspan="82" style="padding:40px;text-align:center;color:#d63031">❌ ' + response.error + '</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="11" style="padding:40px;text-align:center;color:#d63031">❌ ' + response.error + '</td></tr>';
+      // Устанавливаем флаг даже при ошибке
+      salesReportDataLoaded = true;
+      document.getElementById('salesReportBadge').style.display = 'none';
+      checkAllDataLoaded();
       return;
     }
     
-    displaySalesReport(response.data);
+    // Добавляем company_name к каждому элементу данных
+    const currentBusiness = businesses.find(b => b.id === currentBusinessId);
+    const companyName = currentBusiness ? currentBusiness.company_name : '—';
+    const dataWithCompany = response.data.map(item => ({ ...item, company_name: companyName }));
+    
+    displaySalesReport(dataWithCompany);
   })
   .catch(err => {
-    tbody.innerHTML = '<tr><td colspan="82" style="padding:40px;text-align:center;color:#d63031">❌ Ошибка загрузки: ' + err.message + '</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" style="padding:40px;text-align:center;color:#d63031">❌ Ошибка загрузки: ' + err.message + '</td></tr>';
+    // Устанавливаем флаг даже при ошибке
+    salesReportDataLoaded = true;
+    document.getElementById('salesReportBadge').style.display = 'none';
+    checkAllDataLoaded();
   });
 }
 
 // Отображение отчёта по продажам (уникальные артикулы)
+// Глобальная переменная для хранения данных и состояния сортировки
+let salesReportData = [];
+let salesSortState = { column: 'company_name', direction: 'asc' };
+
 function displaySalesReport(data) {
-  const tbody = document.getElementById('datasetBody');
+  const tbody = document.getElementById('salesReportBody');
+  const thead = document.getElementById('salesReportHeader');
+  
+  // Сохраняем данные глобально
+  salesReportData = data;
+  
+  // Устанавливаем заголовки с возможностью сортировки
+  const thStyle = 'padding:12px;text-align:left;border-bottom:2px solid #e9ecef;font-weight:600;color:#2d3436;white-space:nowrap;font-size:14px;cursor:pointer;user-select:none;transition:all 0.2s';
+  const thStyleRight = 'padding:12px;text-align:right;border-bottom:2px solid #e9ecef;font-weight:600;color:#2d3436;white-space:nowrap;font-size:14px;cursor:pointer;user-select:none;transition:all 0.2s';
+  
+  thead.innerHTML = '<tr style="background:#f8f9fa">' +
+    '<th style="' + thStyle + '" onclick="sortSalesReport(&quot;company_name&quot;)" onmouseover="this.style.color=&quot;#6c5ce7&quot;;this.style.background=&quot;#e8e6ff&quot;" onmouseout="this.style.color=&quot;#2d3436&quot;;this.style.background=&quot;transparent&quot;">Компания ↕</th>' +
+    '<th style="' + thStyle + '" onclick="sortSalesReport(&quot;nmId&quot;)" onmouseover="this.style.color=&quot;#6c5ce7&quot;;this.style.background=&quot;#e8e6ff&quot;" onmouseout="this.style.color=&quot;#2d3436&quot;;this.style.background=&quot;transparent&quot;">Артикул WB ↕</th>' +
+    '<th style="' + thStyle + '" onclick="sortSalesReport(&quot;subject&quot;)" onmouseover="this.style.color=&quot;#6c5ce7&quot;;this.style.background=&quot;#e8e6ff&quot;" onmouseout="this.style.color=&quot;#2d3436&quot;;this.style.background=&quot;transparent&quot;">Предмет ↕</th>' +
+    '<th style="' + thStyle + '" onclick="sortSalesReport(&quot;brand&quot;)" onmouseover="this.style.color=&quot;#6c5ce7&quot;;this.style.background=&quot;#e8e6ff&quot;" onmouseout="this.style.color=&quot;#2d3436&quot;;this.style.background=&quot;transparent&quot;">Бренд ↕</th>' +
+    '<th style="' + thStyleRight + '" onclick="sortSalesReport(&quot;quantity&quot;)" onmouseover="this.style.color=&quot;#6c5ce7&quot;;this.style.background=&quot;#e8e6ff&quot;" onmouseout="this.style.color=&quot;#2d3436&quot;;this.style.background=&quot;transparent&quot;">Кол-во продаж ↕</th>' +
+    '<th style="' + thStyleRight + '" onclick="sortSalesReport(&quot;totalRevenue&quot;)" onmouseover="this.style.color=&quot;#6c5ce7&quot;;this.style.background=&quot;#e8e6ff&quot;" onmouseout="this.style.color=&quot;#2d3436&quot;;this.style.background=&quot;transparent&quot;">Общая выручка ↕</th>' +
+    '<th style="' + thStyleRight + '" onclick="sortSalesReport(&quot;totalCommission&quot;)" onmouseover="this.style.color=&quot;#6c5ce7&quot;;this.style.background=&quot;#e8e6ff&quot;" onmouseout="this.style.color=&quot;#2d3436&quot;;this.style.background=&quot;transparent&quot;">Комиссия ↕</th>' +
+    '<th style="' + thStyleRight + '" onclick="sortSalesReport(&quot;totalLogistics&quot;)" onmouseover="this.style.color=&quot;#6c5ce7&quot;;this.style.background=&quot;#e8e6ff&quot;" onmouseout="this.style.color=&quot;#2d3436&quot;;this.style.background=&quot;transparent&quot;">Логистика ↕</th>' +
+    '<th style="' + thStyleRight + '" onclick="sortSalesReport(&quot;totalProfit&quot;)" onmouseover="this.style.color=&quot;#6c5ce7&quot;;this.style.background=&quot;#e8e6ff&quot;" onmouseout="this.style.color=&quot;#2d3436&quot;;this.style.background=&quot;transparent&quot;">Прибыль ↕</th>' +
+    '<th style="' + thStyleRight + '" onclick="sortSalesReport(&quot;avgPrice&quot;)" onmouseover="this.style.color=&quot;#6c5ce7&quot;;this.style.background=&quot;#e8e6ff&quot;" onmouseout="this.style.color=&quot;#2d3436&quot;;this.style.background=&quot;transparent&quot;">Средняя цена ↕</th>' +
+    '<th style="' + thStyle + '" onclick="sortSalesReport(&quot;warehouseName&quot;)" onmouseover="this.style.color=&quot;#6c5ce7&quot;;this.style.background=&quot;#e8e6ff&quot;" onmouseout="this.style.color=&quot;#2d3436&quot;;this.style.background=&quot;transparent&quot;">Склад ↕</th>' +
+    '</tr>';
   
   if (!data || data.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="10" style="padding:40px;text-align:center;color:#636e72">Нет данных за выбранный период</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" style="padding:40px;text-align:center;color:#636e72">Нет данных за выбранный период</td></tr>';
     return;
   }
   
-  tbody.innerHTML = '';
+  // Агрегируем данные по артикулам с сохранением company_name
+  const aggregated = {};
   data.forEach(item => {
+    const key = item.nmId + '_' + item.brand + '_' + (item.company_name || ''); // Уникальный ключ
+    
+    if (!aggregated[key]) {
+      aggregated[key] = {
+        company_name: item.company_name || '—',
+        nmId: item.nmId,
+        subject: item.subject,
+        brand: item.brand,
+        quantity: 0,
+        totalRevenue: 0,
+        totalCommission: 0,
+        totalLogistics: 0,
+        totalProfit: 0,
+        prices: [],
+        warehouseName: item.warehouseName
+      };
+    }
+    
+    aggregated[key].quantity += item.quantity || 0;
+    aggregated[key].totalRevenue += item.totalRevenue || 0;
+    aggregated[key].totalCommission += item.totalCommission || 0;
+    aggregated[key].totalLogistics += item.totalLogistics || 0;
+    aggregated[key].totalProfit += item.totalProfit || 0;
+    if (item.avgPrice) {
+      aggregated[key].prices.push(item.avgPrice);
+    }
+  });
+  
+  // Преобразуем обратно в массив и считаем среднюю цену
+  let finalData = Object.values(aggregated).map(item => ({
+    ...item,
+    avgPrice: item.prices.length > 0 
+      ? item.prices.reduce((sum, p) => sum + p, 0) / item.prices.length 
+      : 0
+  }));
+  
+  // Сохраняем обработанные данные
+  salesReportData = finalData;
+  
+  // Сортируем по компании по умолчанию
+  salesSortState = { column: 'company_name', direction: 'asc' };
+  finalData.sort((a, b) => {
+    const valA = (a.company_name || '').toLowerCase();
+    const valB = (b.company_name || '').toLowerCase();
+    return valA.localeCompare(valB);
+  });
+  
+  tbody.innerHTML = '';
+  finalData.forEach(item => {
     const tr = document.createElement('tr');
     tr.style.borderBottom = '1px solid #f1f3f5';
     tr.innerHTML = 
+      '<td style="padding:12px;font-size:14px;font-weight:600;color:#6c5ce7">' + (item.company_name || '—') + '</td>' +
       '<td style="padding:12px;font-size:14px;font-weight:600">' + (item.nmId || '—') + '</td>' +
       '<td style="padding:12px;font-size:14px">' + (item.subject || '—') + '</td>' +
       '<td style="padding:12px;font-size:14px">' + (item.brand || '—') + '</td>' +
@@ -2267,7 +2571,7 @@ function displaySalesReport(data) {
   
   // Обновляем карточки статистики
   let totalRevenue = 0, totalCommission = 0, totalLogistics = 0, totalProfit = 0;
-  data.forEach(item => {
+  finalData.forEach(item => {
     totalRevenue += item.totalRevenue || 0;
     totalCommission += item.totalCommission || 0;
     totalLogistics += item.totalLogistics || 0;
@@ -2279,17 +2583,90 @@ function displaySalesReport(data) {
   document.getElementById('totalLogistics').textContent = totalLogistics.toFixed(2) + ' ₽';
   document.getElementById('netProfit').textContent = totalProfit.toFixed(2) + ' ₽';
   document.getElementById('pureProfit').textContent = '—';
+  
+  // Устанавливаем флаг загрузки
+  salesReportDataLoaded = true;
+  
+  // Скрываем бейдж загрузки для продаж
+  document.getElementById('salesReportBadge').style.display = 'none';
+  
+  // Проверяем завершение всех загрузок
+  checkAllDataLoaded();
+}
+
+// Функция сортировки таблицы продаж
+function sortSalesReport(column) {
+  // Определяем тип данных для корректной сортировки
+  const numericColumns = ['nmId', 'quantity', 'totalRevenue', 'totalCommission', 'totalLogistics', 'totalProfit', 'avgPrice'];
+  const isNumeric = numericColumns.includes(column);
+  
+  // Переключаем направление, если кликнули на ту же колонку
+  if (salesSortState.column === column) {
+    salesSortState.direction = salesSortState.direction === 'asc' ? 'desc' : 'asc';
+  } else {
+    salesSortState.column = column;
+    salesSortState.direction = 'asc';
+  }
+  
+  // Сортируем данные
+  salesReportData.sort((a, b) => {
+    let valA = a[column];
+    let valB = b[column];
+    
+    if (isNumeric) {
+      valA = parseFloat(valA) || 0;
+      valB = parseFloat(valB) || 0;
+      return salesSortState.direction === 'asc' ? valA - valB : valB - valA;
+    } else {
+      valA = (valA || '').toString().toLowerCase();
+      valB = (valB || '').toString().toLowerCase();
+      const comparison = valA.localeCompare(valB);
+      return salesSortState.direction === 'asc' ? comparison : -comparison;
+    }
+  });
+  
+  // Перерисовываем таблицу
+  const tbody = document.getElementById('salesReportBody');
+  tbody.innerHTML = '';
+  salesReportData.forEach(item => {
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid #f1f3f5';
+    tr.innerHTML = 
+      '<td style="padding:12px;font-size:14px;font-weight:600;color:#6c5ce7">' + (item.company_name || '—') + '</td>' +
+      '<td style="padding:12px;font-size:14px;font-weight:600">' + (item.nmId || '—') + '</td>' +
+      '<td style="padding:12px;font-size:14px">' + (item.subject || '—') + '</td>' +
+      '<td style="padding:12px;font-size:14px">' + (item.brand || '—') + '</td>' +
+      '<td style="padding:12px;text-align:right;font-size:14px;font-weight:600;color:#00b894">' + (item.quantity || 0) + '</td>' +
+      '<td style="padding:12px;text-align:right;font-size:14px">' + (item.totalRevenue || 0).toFixed(2) + ' ₽</td>' +
+      '<td style="padding:12px;text-align:right;font-size:14px;color:#d63031">' + (item.totalCommission || 0).toFixed(2) + ' ₽</td>' +
+      '<td style="padding:12px;text-align:right;font-size:14px;color:#e17055">' + (item.totalLogistics || 0).toFixed(2) + ' ₽</td>' +
+      '<td style="padding:12px;text-align:right;font-size:14px;font-weight:600;color:#00b894">' + (item.totalProfit || 0).toFixed(2) + ' ₽</td>' +
+      '<td style="padding:12px;text-align:right;font-size:14px">' + (item.avgPrice || 0).toFixed(2) + ' ₽</td>' +
+      '<td style="padding:12px;font-size:13px;color:#636e72">' + (item.warehouseName || '—') + '</td>';
+    tbody.appendChild(tr);
+  });
 }
 
 // Загрузка полного финансового отчёта WB
 function loadFullFinReport(dateRange) {
+  console.log('loadFullFinReport вызвана, currentBusinessId:', currentBusinessId);
+  
   if (!currentBusinessId) {
     alert('❌ Выберите компанию');
     return;
   }
   
-  const tbody = document.getElementById('datasetBody');
+  const tbody = document.getElementById('finReportBody');
   tbody.innerHTML = '<tr><td colspan="82" style="padding:40px;text-align:center;color:#636e72">⏳ Загрузка финансового отчёта...</td></tr>';
+  
+  // Если выбраны все компании - загружаем из всех активных
+  if (currentBusinessId === 'all') {
+    console.log('Загружаем из всех активных компаний');
+    loadFromAllBusinesses('/api/wb-fin-report', dateRange, displayFullFinReport);
+    return;
+  }
+  
+  console.log('Загружаем из одной компании:', currentBusinessId);
   
   fetch('/api/wb-fin-report?businessId=' + currentBusinessId + '&dateFrom=' + dateRange.dateFrom + '&dateTo=' + dateRange.dateTo, {
     headers: {
@@ -2300,22 +2677,124 @@ function loadFullFinReport(dateRange) {
   .then(response => {
     if (response.error) {
       tbody.innerHTML = '<tr><td colspan="82" style="padding:40px;text-align:center;color:#d63031">❌ ' + response.error + '</td></tr>';
+      // Устанавливаем флаг даже при ошибке
+      finReportDataLoaded = true;
+      document.getElementById('finReportBadge').style.display = 'none';
+      checkAllDataLoaded();
       return;
     }
     
-    displayFullFinReport(response.data);
+    // Добавляем company_name к каждому элементу данных
+    const currentBusiness = businesses.find(b => b.id === currentBusinessId);
+    const companyName = currentBusiness ? currentBusiness.company_name : '—';
+    const dataWithCompany = response.data.map(item => ({ ...item, company_name: companyName }));
+    
+    displayFullFinReport(dataWithCompany);
   })
   .catch(err => {
     tbody.innerHTML = '<tr><td colspan="82" style="padding:40px;text-align:center;color:#d63031">❌ Ошибка загрузки: ' + err.message + '</td></tr>';
+    // Устанавливаем флаг даже при ошибке
+    finReportDataLoaded = true;
+    document.getElementById('finReportBadge').style.display = 'none';
+    checkAllDataLoaded();
   });
 }
 
 // Отображение полного финансового отчёта
+let finReportDataByCompany = {}; // Храним данные по компаниям
+let currentFinReportCompany = null;
+
 function displayFullFinReport(data) {
-  const tbody = document.getElementById('datasetBody');
+  console.log('displayFullFinReport вызвана, данных:', data ? data.length : 0);
+  console.log('currentBusinessId:', currentBusinessId);
+  
+  const tbody = document.getElementById('finReportBody');
+  const tabsContainer = document.getElementById('finReportTabs');
   
   if (!data || data.length === 0) {
     tbody.innerHTML = '<tr><td colspan="82" style="padding:40px;text-align:center;color:#636e72">Нет данных за выбранный период</td></tr>';
+    if (tabsContainer) tabsContainer.style.display = 'none';
+    
+    // Устанавливаем флаг загрузки даже если данных нет
+    finReportDataLoaded = true;
+    document.getElementById('finReportBadge').style.display = 'none';
+    checkAllDataLoaded();
+    return;
+  }
+  
+  // Группируем данные по компаниям (только если есть company_name)
+  const hasCompanyNames = data.some(item => item.company_name);
+  console.log('Есть ли company_name в данных:', hasCompanyNames);
+  console.log('Пример первого элемента:', data[0]);
+  
+  if (hasCompanyNames && currentBusinessId === 'all') {
+    // Группируем по компаниям
+    finReportDataByCompany = {};
+    data.forEach(item => {
+      const companyName = item.company_name || '—';
+      if (!finReportDataByCompany[companyName]) {
+        finReportDataByCompany[companyName] = [];
+      }
+      finReportDataByCompany[companyName].push(item);
+    });
+    
+    const companyNames = Object.keys(finReportDataByCompany);
+    
+    if (companyNames.length > 1) {
+      // Создаем табы
+      if (tabsContainer) {
+        tabsContainer.style.display = 'flex';
+        tabsContainer.style.borderBottom = '2px solid #e9ecef';
+        tabsContainer.style.marginBottom = '0';
+        tabsContainer.innerHTML = companyNames.map((name, index) => 
+          '<button onclick="switchFinReportCompany(' + index + ')" ' +
+          'style="padding:12px 24px;background:#f8f9fa;border:none;border-bottom:3px solid transparent;' +
+          'font-weight:600;cursor:pointer;margin-right:2px;transition:all 0.2s;color:#636e72;font-size:14px" ' +
+          'id="finTab_' + index + '">' + name + '</button>'
+        ).join('');
+      }
+      
+      // Показываем первую компанию
+      currentFinReportCompany = 0;
+      renderFinReportData(finReportDataByCompany[companyNames[0]]);
+      highlightActiveFinTab(0);
+      return;
+    }
+  }
+  
+  // Если не нужны табы - просто показываем все данные
+  if (tabsContainer) tabsContainer.style.display = 'none';
+  renderFinReportData(data);
+}
+
+function switchFinReportCompany(index) {
+  const companyNames = Object.keys(finReportDataByCompany);
+  currentFinReportCompany = index;
+  renderFinReportData(finReportDataByCompany[companyNames[index]]);
+  highlightActiveFinTab(index);
+}
+
+function highlightActiveFinTab(index) {
+  const allTabs = document.querySelectorAll('[id^="finTab_"]');
+  allTabs.forEach(tab => {
+    tab.style.background = '#f8f9fa';
+    tab.style.color = '#636e72';
+    tab.style.borderBottom = '3px solid transparent';
+  });
+  
+  const activeTab = document.getElementById('finTab_' + index);
+  if (activeTab) {
+    activeTab.style.background = '#fff';
+    activeTab.style.color = '#6c5ce7';
+    activeTab.style.borderBottom = '3px solid #6c5ce7';
+  }
+}
+
+function renderFinReportData(data) {
+  const tbody = document.getElementById('finReportBody');
+  
+  if (!data || data.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="82" style="padding:40px;text-align:center;color:#636e72">Нет данных</td></tr>';
     return;
   }
   
@@ -2437,6 +2916,15 @@ function displayFullFinReport(data) {
   document.getElementById('totalLogistics').textContent = totalLogistics.toFixed(2) + ' ₽';
   document.getElementById('netProfit').textContent = totalForPay.toFixed(2) + ' ₽';
   document.getElementById('pureProfit').textContent = '—';
+  
+  // Устанавливаем флаг загрузки
+  finReportDataLoaded = true;
+  
+  // Скрываем бейдж загрузки для фин отчёта
+  document.getElementById('finReportBadge').style.display = 'none';
+  
+  // Проверяем завершение всех загрузок
+  checkAllDataLoaded();
 }
 
 function displayFinancialData(data) {
