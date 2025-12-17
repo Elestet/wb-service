@@ -8,3 +8,12 @@ test.html
 
 # API keys (sensitive data)
 wb-api-key.txt
+wb-api-key.txt.backup
+
+# Database (local data)
+wb-service.db
+wb-service.db-shm
+wb-service.db-wal
+
+# Dependencies
+node_modules/
